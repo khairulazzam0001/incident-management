@@ -1,0 +1,3 @@
+# Normalisasi line-ending: sumber teks selalu LF (Go, TS, SQL, YAML).
+* text=auto eol=lf
+*.pdf binary

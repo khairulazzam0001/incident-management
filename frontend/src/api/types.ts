@@ -134,6 +134,57 @@ export interface UserListResponse {
   data: User[];
 }
 
+export interface Attachment {
+  id: string;
+  incident_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+export interface AttachmentListResponse {
+  data: Attachment[];
+}
+
+export interface Notification {
+  id: string;
+  incident_id: string;
+  type: string;
+  recipient_id: string;
+  actor_id: string | null;
+  read_at: string | null;
+  email_status: string;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  data: Notification[];
+  unread: number;
+}
+
+export interface NamedCount {
+  id: string | null;
+  name: string;
+  count: number;
+}
+
+export interface Dashboard {
+  open_total: number;
+  by_status: Record<string, number>;
+  by_severity: Record<string, number>;
+  by_priority: Record<string, number>;
+  by_application: NamedCount[];
+  by_team: NamedCount[];
+  my_open: number;
+  avg_hours_create_to_assign: number | null;
+  avg_hours_create_to_resolve: number | null;
+  avg_hours_create_to_close: number | null;
+  reopen_rate: number | null;
+  verification_failure_rate: number | null;
+}
+
 export interface Investigation {
   id: string;
   incident_id: string;

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -44,14 +45,15 @@ func testRouter(t *testing.T, pool *pgxpool.Pool) http.Handler {
 		t.Fatalf("auth service: %v", err)
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	return NewRouter(Deps{Log: log, Auth: authSvc, Incidents: service.NewIncidentService(repo)})
+	uploadCfg := service.DefaultUploadConfig(t.TempDir())
+	return NewRouter(Deps{Log: log, Auth: authSvc, Incidents: service.NewIncidentService(repo, nil, log, uploadCfg)})
 }
 
 // reset truncates transaction tables; masters and seeds stay intact.
 func reset(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(), `TRUNCATE
-		trans_incident_attachment, trans_incident_verification, trans_incident_fix,
+		trans_notification, trans_incident_attachment, trans_incident_verification, trans_incident_fix,
 		trans_incident_investigation, trans_incident_activity, trans_incident_comment,
 		trans_incident_assignment, trans_incident`)
 	if err != nil {
@@ -473,5 +475,354 @@ func TestPhase2Flow(t *testing.T) {
 		if !types[want] {
 			t.Fatalf("timeline: tipe %q hilang", want)
 		}
+	}
+}
+
+// notifTypes fetches notification types for the token holder.
+func notifTypes(t *testing.T, router http.Handler, token string) (map[string]bool, int) {
+	t.Helper()
+	rec := doRequest(t, router, http.MethodGet, "/api/notifications?limit=100", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("notifications: status %d", rec.Code)
+	}
+	body := decodeBody(t, rec)
+	out := map[string]bool{}
+	items, _ := body["data"].([]any)
+	for _, it := range items {
+		if m, ok := it.(map[string]any); ok {
+			if ty, ok := m["type"].(string); ok {
+				out[ty] = true
+			}
+		}
+	}
+	unread := 0
+	if u, ok := body["unread"].(float64); ok {
+		unread = int(u)
+	}
+	return out, unread
+}
+
+// TestPhase3Flow covers notifications, dashboard, advanced filters, masters.
+func TestPhase3Flow(t *testing.T) {
+	pool := testDB(t)
+	router := testRouter(t, pool)
+	reset(t, pool)
+
+	helpdesk := login(t, router, "helpdesk@example.com")
+	customer := login(t, router, "user@example.com")
+	dev := login(t, router, "developer@example.com")
+	qa := login(t, router, "qa@example.com")
+	manager := login(t, router, "manager@example.com")
+	team := teamID(t, pool)
+	devID := userID(t, pool, "developer@example.com")
+
+	// Setup flow: create → assign → investigate → fix → verifying.
+	rec := doRequest(t, router, http.MethodPost, "/api/incidents", customer,
+		map[string]string{"title": "Notifikasi dan dashboard", "description": "uji fase 3", "severity": "S3", "priority": "P3", "source": "user"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: status %d", rec.Code)
+	}
+	id, _ := decodeBody(t, rec)["id"].(string)
+	rec = doRequest(t, router, http.MethodPatch, "/api/incidents/"+id+"/assignment", helpdesk,
+		map[string]string{"team_id": team, "pic_id": devID})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("assign: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents/"+id+"/investigations", dev,
+		map[string]string{"notes": "n", "findings": "f"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("investigation: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents/"+id+"/fixes", dev,
+		map[string]string{"description": "fix"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("fix: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPatch, "/api/incidents/"+id+"/status", dev,
+		map[string]string{"status": "VERIFYING"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verifying: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents/"+id+"/comments", dev,
+		map[string]string{"body": "update progres"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("comment: status %d", rec.Code)
+	}
+
+	// 1. Fanout: created → koordinator; assigned → PIC; comment → reporter.
+	if types, _ := notifTypes(t, router, helpdesk); !types["created"] {
+		t.Fatal("helpdesk: notif created hilang")
+	}
+	if types, _ := notifTypes(t, router, dev); !types["assigned"] {
+		t.Fatal("dev: notif assigned hilang")
+	}
+	ctypes, cunread := notifTypes(t, router, customer)
+	for _, want := range []string{"status_changed", "comment"} {
+		if !ctypes[want] {
+			t.Fatalf("customer: notif %q hilang", want)
+		}
+	}
+	if cunread < 2 {
+		t.Fatalf("customer: unread %d, want >= 2", cunread)
+	}
+
+	// 2. Verification FAIL → PIC dapat verification_failed; PASS → reporter resolved.
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents/"+id+"/verification", qa,
+		map[string]string{"result": "FAIL", "reason": "belum ok"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verify FAIL: status %d", rec.Code)
+	}
+	if types, _ := notifTypes(t, router, dev); !types["verification_failed"] {
+		t.Fatal("dev: notif verification_failed hilang")
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents/"+id+"/fixes", dev,
+		map[string]string{"description": "fix lagi"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("fix lagi: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPatch, "/api/incidents/"+id+"/status", dev,
+		map[string]string{"status": "VERIFYING"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verifying lagi: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents/"+id+"/verification", qa,
+		map[string]string{"result": "PASS"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verify PASS: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents/"+id+"/close", helpdesk, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("close: status %d", rec.Code)
+	}
+	if types, _ := notifTypes(t, router, customer); !types["closed"] {
+		t.Fatal("customer: notif closed hilang")
+	}
+
+	// 3. Mark read: sukses → 200; diulang → 404; milik orang lain → 404.
+	rec = doRequest(t, router, http.MethodGet, "/api/notifications", customer, nil)
+	items, _ := decodeBody(t, rec)["data"].([]any)
+	if len(items) == 0 {
+		t.Fatal("customer: notifikasi kosong")
+	}
+	firstID, _ := items[0].(map[string]any)["id"].(string)
+	rec = doRequest(t, router, http.MethodPost, "/api/notifications/"+firstID+"/read", customer, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("mark read: status %d", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/notifications/"+firstID+"/read", customer, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("mark read ganda: status %d, want 404", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/notifications/"+firstID+"/read", dev, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("mark read milik orang: status %d, want 404", rec.Code)
+	}
+
+	// 4. Dashboard: struktur + angka pokok.
+	rec = doRequest(t, router, http.MethodGet, "/api/dashboard", manager, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard: status %d", rec.Code)
+	}
+	board := decodeBody(t, rec)
+	for _, k := range []string{"open_total", "by_status", "by_severity", "by_priority", "my_open", "reopen_rate", "verification_failure_rate"} {
+		if _, ok := board[k]; !ok {
+			t.Fatalf("dashboard: kunci %q hilang", k)
+		}
+	}
+
+	// 5. Filter lanjutan: assignee=me, tanggal invalid, assignee invalid.
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents?assignee=me", dev, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("assignee=me: status %d", rec.Code)
+	}
+	if total := decodeBody(t, rec)["meta"].(map[string]any)["total"]; total == float64(0) {
+		t.Fatal("assignee=me: total 0, want >= 1")
+	}
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents?assignee=bogus", dev, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("assignee bogus: status %d, want 400", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents?created_from=2026-13-99", dev, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("tanggal invalid: status %d, want 400", rec.Code)
+	}
+
+	// 6. Master: 403 untuk non-koordinator, 201, 409 duplikat, hapus ber-permission.
+	rec = doRequest(t, router, http.MethodPost, "/api/master/applications", customer,
+		map[string]string{"code": "web", "name": "Web"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("master oleh user: status %d, want 403", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodPost, "/api/master/applications", helpdesk,
+		map[string]string{"code": "web", "name": "Web"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create application: status %d", rec.Code)
+	}
+	appID, _ := decodeBody(t, rec)["id"].(string)
+	rec = doRequest(t, router, http.MethodPost, "/api/master/applications", helpdesk,
+		map[string]string{"code": "web", "name": "Web Lagi"})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("duplikat application: status %d, want 409", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodDelete, "/api/master/applications/"+appID, helpdesk, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("delete oleh helpdesk: status %d, want 403", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodDelete, "/api/master/applications/"+appID, manager, nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete application: status %d", rec.Code)
+	}
+
+	// 7. Team terpakai tidak bisa dihapus (409).
+	rec = doRequest(t, router, http.MethodDelete, "/api/master/teams/"+team, manager, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("delete team terpakai: status %d, want 409", rec.Code)
+	}
+}
+
+func uploadRequest(t *testing.T, router http.Handler, path, token, filename string, content []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("form file: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("write part: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+var tinyPNG = append([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
+	bytes.Repeat([]byte{0}, 100)...)
+
+// TestHardeningFlow covers attachments (FR-09) and read scope (PRD §15).
+func TestHardeningFlow(t *testing.T) {
+	pool := testDB(t)
+	router := testRouter(t, pool)
+	reset(t, pool)
+
+	helpdesk := login(t, router, "helpdesk@example.com")
+	customer := login(t, router, "user@example.com")
+	dev := login(t, router, "developer@example.com")
+	devID := userID(t, pool, "developer@example.com")
+	team := teamID(t, pool)
+
+	// Incident milik customer (reporter), PIC developer.
+	rec := doRequest(t, router, http.MethodPost, "/api/incidents", customer,
+		map[string]string{"title": "Butuh scope baca", "description": "uji", "severity": "S4", "priority": "P4", "source": "user"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: status %d", rec.Code)
+	}
+	ownID, _ := decodeBody(t, rec)["id"].(string)
+	rec = doRequest(t, router, http.MethodPatch, "/api/incidents/"+ownID+"/assignment", helpdesk,
+		map[string]string{"team_id": team, "pic_id": devID})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("assign: status %d", rec.Code)
+	}
+
+	// Incident milik helpdesk (customer bukan apa-apa di sini).
+	rec = doRequest(t, router, http.MethodPost, "/api/incidents", helpdesk,
+		map[string]string{"title": "Milik orang lain", "description": "uji", "severity": "S4", "priority": "P4", "source": "helpdesk"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create kedua: status %d", rec.Code)
+	}
+	otherID, _ := decodeBody(t, rec)["id"].(string)
+
+	// 1. Scope baca: customer tidak bisa baca milik orang lain.
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents/"+otherID, customer, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("baca milik orang: status %d, want 403", rec.Code)
+	}
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents/"+otherID+"/timeline", customer, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("timeline milik orang: status %d, want 403", rec.Code)
+	}
+
+	// 2. Internal role (developer) bisa baca semua.
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents/"+otherID, dev, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dev baca: status %d", rec.Code)
+	}
+
+	// 3. List customer hanya miliknya yang terlibat.
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents", customer, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list customer: status %d", rec.Code)
+	}
+	if total := decodeBody(t, rec)["meta"].(map[string]any)["total"]; total != float64(1) {
+		t.Fatalf("list customer: total %v, want 1", total)
+	}
+
+	// 4. Upload oleh reporter (bukan PIC) → 403.
+	rec = uploadRequest(t, router, "/api/incidents/"+ownID+"/attachments", customer, "shot.png", tinyPNG)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("upload oleh reporter: status %d, want 403", rec.Code)
+	}
+
+	// 5. Tipe tak diizinkan → 400.
+	rec = uploadRequest(t, router, "/api/incidents/"+ownID+"/attachments", dev, "run.exe", []byte("MZ fake"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("upload exe: status %d, want 400", rec.Code)
+	}
+
+	// 6. Upload valid oleh PIC → 201.
+	rec = uploadRequest(t, router, "/api/incidents/"+ownID+"/attachments", dev, "shot.png", tinyPNG)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("upload: status %d body %s", rec.Code, rec.Body.String())
+	}
+	aid, _ := decodeBody(t, rec)["id"].(string)
+
+	// 7. List + download (reporter boleh unduh).
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents/"+ownID+"/attachments", customer, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list attachments: status %d", rec.Code)
+	}
+	if items, _ := decodeBody(t, rec)["data"].([]any); len(items) != 1 {
+		t.Fatalf("attachments: count %d, want 1", len(items))
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/incidents/"+ownID+"/attachments/"+aid+"/download", nil)
+	req.Header.Set("Authorization", "Bearer "+customer)
+	drec := httptest.NewRecorder()
+	router.ServeHTTP(drec, req)
+	if drec.Code != http.StatusOK {
+		t.Fatalf("download: status %d", drec.Code)
+	}
+	if !bytes.Equal(drec.Body.Bytes(), tinyPNG) {
+		t.Fatal("download: isi file tidak sama")
+	}
+
+	// 8. Download unknown → 404; milik orang lain → 403.
+	req = httptest.NewRequest(http.MethodGet, "/api/incidents/"+ownID+"/attachments/00000000-0000-0000-0000-000000000000/download", nil)
+	req.Header.Set("Authorization", "Bearer "+dev)
+	drec = httptest.NewRecorder()
+	router.ServeHTTP(drec, req)
+	if drec.Code != http.StatusNotFound {
+		t.Fatalf("download unknown: status %d, want 404", drec.Code)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/api/incidents/"+ownID+"/attachments/"+aid+"/download", nil)
+	req.Header.Set("Authorization", "Bearer "+helpdesk)
+	_ = req
+	rec = doRequest(t, router, http.MethodGet, "/api/incidents/"+otherID+"/attachments", customer, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("attachments milik orang: status %d, want 403", rec.Code)
+	}
+
+	// 9. Oversize → 400.
+	big := bytes.Repeat([]byte{0}, (11 << 20))
+	rec = uploadRequest(t, router, "/api/incidents/"+ownID+"/attachments", dev, "big.png", big)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("upload oversize: status %d, want 400", rec.Code)
 	}
 }

@@ -45,16 +45,20 @@ func (s *IncidentService) AddInvestigation(ctx context.Context, actor *model.Aut
 	return inv, nil
 }
 
-// Investigations returns the investigation records or 404.
-func (s *IncidentService) Investigations(ctx context.Context, id string) ([]*model.Investigation, error) {
+// Investigations returns the investigation records or 404/403.
+func (s *IncidentService) Investigations(ctx context.Context, actor *model.AuthUser, id string) ([]*model.Investigation, error) {
 	if err := requireIncidentID(id); err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.GetIncident(ctx, id); err != nil {
+	cur, err := s.repo.GetIncident(ctx, id)
+	if err != nil {
 		if isNotFound(err) {
 			return nil, NotFound("Incident")
 		}
 		return nil, fmt.Errorf("get incident: %w", err)
+	}
+	if err := s.checkRead(actor, cur); err != nil {
+		return nil, err
 	}
 	items, err := s.repo.ListInvestigations(ctx, id)
 	if err != nil {
@@ -100,16 +104,20 @@ func (s *IncidentService) AddFix(ctx context.Context, actor *model.AuthUser, id 
 	return f, nil
 }
 
-// Fixes returns the fix records or 404.
-func (s *IncidentService) Fixes(ctx context.Context, id string) ([]*model.Fix, error) {
+// Fixes returns the fix records or 404/403.
+func (s *IncidentService) Fixes(ctx context.Context, actor *model.AuthUser, id string) ([]*model.Fix, error) {
 	if err := requireIncidentID(id); err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.GetIncident(ctx, id); err != nil {
+	cur, err := s.repo.GetIncident(ctx, id)
+	if err != nil {
 		if isNotFound(err) {
 			return nil, NotFound("Incident")
 		}
 		return nil, fmt.Errorf("get incident: %w", err)
+	}
+	if err := s.checkRead(actor, cur); err != nil {
+		return nil, err
 	}
 	items, err := s.repo.ListFixes(ctx, id)
 	if err != nil {
@@ -160,19 +168,29 @@ func (s *IncidentService) Verify(ctx context.Context, actor *model.AuthUser, id 
 	if err != nil {
 		return nil, fmt.Errorf("add verification: %w", err)
 	}
+	if in.Result == model.VerificationFail {
+		s.fanout(ctx, cur, actor, model.NotifVerificationFailed)
+	} else {
+		cur.Status = model.StatusResolved
+		s.fanout(ctx, cur, actor, model.NotifResolved)
+	}
 	return v, nil
 }
 
-// Verifications returns the verification records or 404.
-func (s *IncidentService) Verifications(ctx context.Context, id string) ([]*model.Verification, error) {
+// Verifications returns the verification records or 404/403.
+func (s *IncidentService) Verifications(ctx context.Context, actor *model.AuthUser, id string) ([]*model.Verification, error) {
 	if err := requireIncidentID(id); err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.GetIncident(ctx, id); err != nil {
+	cur, err := s.repo.GetIncident(ctx, id)
+	if err != nil {
 		if isNotFound(err) {
 			return nil, NotFound("Incident")
 		}
 		return nil, fmt.Errorf("get incident: %w", err)
+	}
+	if err := s.checkRead(actor, cur); err != nil {
+		return nil, err
 	}
 	items, err := s.repo.ListVerifications(ctx, id)
 	if err != nil {
@@ -206,6 +224,7 @@ func (s *IncidentService) Close(ctx context.Context, actor *model.AuthUser, id s
 	if err != nil {
 		return nil, fmt.Errorf("close incident: %w", err)
 	}
+	s.fanout(ctx, updated, actor, model.NotifClosed)
 	return updated, nil
 }
 
@@ -242,5 +261,6 @@ func (s *IncidentService) Reopen(ctx context.Context, actor *model.AuthUser, id 
 	if err != nil {
 		return nil, fmt.Errorf("reopen incident: %w", err)
 	}
+	s.fanout(ctx, updated, actor, model.NotifStatusChanged)
 	return updated, nil
 }

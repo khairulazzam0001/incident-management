@@ -90,14 +90,20 @@ func (r *Repository) GetIncident(ctx context.Context, id string) (*model.Inciden
 
 // IncidentFilter filters listing. Page starts at 1.
 type IncidentFilter struct {
-	Status   string
-	Severity string
-	Priority string
-	Q        string
-	Sort     string
-	Order    string
-	Page     int
-	Limit    int
+	Status        string
+	Severity      string
+	Priority      string
+	Q             string
+	ApplicationID string
+	TeamID        string
+	AssigneeID    string
+	InvolvedID    string
+	CreatedFrom   string
+	CreatedTo     string
+	Sort          string
+	Order         string
+	Page          int
+	Limit         int
 }
 
 // ListIncidents returns a page plus the total count.
@@ -121,6 +127,26 @@ func (r *Repository) ListIncidents(ctx context.Context, f IncidentFilter) ([]*mo
 		args = append(args, "%"+f.Q+"%")
 		conds = append(conds, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d OR incident_no ILIKE $%d)",
 			len(args), len(args), len(args)))
+	}
+	if f.ApplicationID != "" {
+		add("application_id = $%d", f.ApplicationID)
+	}
+	if f.TeamID != "" {
+		add("current_team_id = $%d", f.TeamID)
+	}
+	if f.AssigneeID != "" {
+		add("current_pic_id = $%d", f.AssigneeID)
+	}
+	if f.InvolvedID != "" {
+		args = append(args, f.InvolvedID, f.InvolvedID)
+		conds = append(conds, fmt.Sprintf("(reporter_id = $%d OR current_pic_id = $%d)",
+			len(args)-1, len(args)))
+	}
+	if f.CreatedFrom != "" {
+		add("created_at >= $%d::date", f.CreatedFrom)
+	}
+	if f.CreatedTo != "" {
+		add("created_at < ($%d::date + INTERVAL '1 day')", f.CreatedTo)
 	}
 	sortCols := map[string]string{
 		"created_at": "created_at", "updated_at": "updated_at",

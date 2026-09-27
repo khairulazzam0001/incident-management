@@ -1,3 +1,28 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --color-iris-bolt: #4255ff;
+  --color-ink-charcoal: #282e3e;
+  --color-deep-indigo: #2e3856;
+  --color-slate-veil: #586380;
+  --color-fog-mist: #939bb4;
+  --color-chalk-canvas: #f6f7fb;
+  --color-paper-white: #ffffff;
+  --color-lilac-wash: #edefff;
+  --color-mist-border: #d9dde8;
+  --shadow-md: rgba(40, 46, 62, 0.1) 0px 4px 16px 0px;
+  --shadow-sm: rgba(40, 46, 62, 0.1) 0px 2px 4px 0px;
+}
+
+@layer base {
+  body {
+    @apply bg-chalk font-sans text-ink;
+    font-weight: 400;
+  }
+
+  ::placeholder {
+    color: #939bb4;
+  }
+}

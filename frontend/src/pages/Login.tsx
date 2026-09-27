@@ -29,9 +29,9 @@ export function Login() {
   }
 
   return (
-    <section className="mx-auto mt-16 max-w-sm p-6">
-      <h1 className="text-2xl font-bold">Masuk</h1>
-      <p className="mt-1 text-sm text-slate-500">Incident Management</p>
+    <section className="mx-auto mt-16 max-w-sm rounded-lg border border-mist bg-paper p-6 shadow-md">
+      <h1 className="text-2xl font-semibold">Masuk</h1>
+      <p className="mt-1 text-sm text-veil">Incident Management</p>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <label className="block">
           <span className="text-sm font-medium">Email</span>
@@ -40,7 +40,7 @@ export function Login() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded border px-3 py-2"
+            className="mt-1 w-full rounded border border-mist bg-paper px-3 py-2 text-sm focus:border-iris focus:outline-none"
             autoComplete="username"
           />
         </label>
@@ -51,17 +51,17 @@ export function Login() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded border px-3 py-2"
+            className="mt-1 w-full rounded border border-mist bg-paper px-3 py-2 text-sm focus:border-iris focus:outline-none"
             autoComplete="current-password"
           />
         </label>
         {error !== null && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
         <button
           type="submit"
           disabled={isPending}
-          className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="w-full rounded-full bg-iris px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-95 disabled:opacity-50"
         >
           {isPending ? "Memeriksa…" : "Masuk"}
         </button>

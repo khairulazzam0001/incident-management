@@ -58,6 +58,7 @@ Backend:
 
 Frontend:
 - React 18 + TypeScript + Vite. Styling: Tailwind CSS.
+- Tema visual mengacu `frontend/UI-reference/DESIGN.md` (Quizlet-reference): canvas `#f6f7fb`, kartu putih `#ffffff`, teks `#282e3e`/`#586380`, aksen satu-satunya `#4255ff` (token Tailwind: `chalk/paper/ink/veil/iris/lilac/mist`), font Inter (substitusi Hurme), tombol primer pill `rounded-full`, kartu `rounded-lg` + border mist. Badge severity/priority boleh pakai warna semantik pastel (kebutuhan operasional).
 - Data fetching: `fetch` + custom hook, atau TanStack Query (prefer TanStack Query untuk list/detail incident).
 - Jangan pakai UI framework berat (MUI/AntD) kecuali diminta user.
 
@@ -140,6 +141,16 @@ GET    /api/incidents/:id/fixes           # list (tambahan Fase 2, di luar PRD �
 POST   /api/auth/login                    # {email,password} → {token,user} (tambahan Fase 1)
 GET    /api/meta                          # master data untuk form/filter (tambahan Fase 1)
 GET    /api/users                         # user aktif untuk assignment lookup (tambahan Fase 1)
+GET    /api/dashboard                     # agregat PRD §14 (tambahan Fase 3)
+GET    /api/notifications?unread=&limit=  # notifikasi saya + unread count (tambahan Fase 3)
+POST   /api/notifications/:id/read        # tandai dibaca (tambahan Fase 3)
+POST   /api/master/applications           # koordinator (tambahan Fase 3)
+DELETE /api/master/applications/:id       # ManagerLead, 409 bila terpakai (tambahan Fase 3)
+POST   /api/master/teams                  # koordinator (tambahan Fase 3)
+DELETE /api/master/teams/:id              # ManagerLead, 409 bila terpakai (tambahan Fase 3)
+POST   /api/incidents/:id/attachments     # multipart field=file, PIC/koordinator, maks 10 MiB, png/jpg/gif/webp/pdf/txt/zip (tambahan #9, FR-09)
+GET    /api/incidents/:id/attachments     # list file (tambahan #9)
+GET    /api/incidents/:id/attachments/:aid/download  # unduh + access control (tambahan #9)
 ```
 
 Body create incident (field lengkap menyusul master data):
@@ -186,3 +197,7 @@ Jangan ubah contract tanpa update frontend `api/` dan sebutkan di ringkasan akhi
 - Menambah dependensi besar tanpa konfirmasi (ORM berat, framework UI, dsb).
 - Mengubah versi Go/Node atau toolchain tanpa diminta.
 - Membuat file di luar workspace (`C:\Users\Lenovo\AppData\Local\Temp\opencode` hanya untuk file sementara).
+
+## 12. Tampilan UI
+
+- Harus mngacu pada DESIGN.md

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -54,6 +55,16 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/incidents/{id}/verifications", HandleVerifications(d))
 		r.Post("/api/incidents/{id}/close", HandleClose(d))
 		r.Post("/api/incidents/{id}/reopen", HandleReopen(d))
+		r.Post("/api/incidents/{id}/attachments", HandleUploadAttachment(d))
+		r.Get("/api/incidents/{id}/attachments", HandleAttachments(d))
+		r.Get("/api/incidents/{id}/attachments/{aid}/download", HandleDownloadAttachment(d))
+		r.Get("/api/dashboard", HandleDashboard(d))
+		r.Get("/api/notifications", HandleNotifications(d))
+		r.Post("/api/notifications/{id}/read", HandleMarkNotificationRead(d))
+		r.Post("/api/master/applications", HandleCreateApplication(d))
+		r.Delete("/api/master/applications/{id}", HandleDeleteApplication(d))
+		r.Post("/api/master/teams", HandleCreateTeam(d))
+		r.Delete("/api/master/teams/{id}", HandleDeleteTeam(d))
 		r.Get("/api/incidents/{id}/timeline", HandleTimeline(d))
 	})
 
@@ -100,4 +111,8 @@ func actorOf(d Deps, w http.ResponseWriter, r *http.Request) (*model.AuthUser, b
 		return nil, false
 	}
 	return u, true
+}
+
+func atoiQuery(s string) (int, error) {
+	return strconv.Atoi(s)
 }

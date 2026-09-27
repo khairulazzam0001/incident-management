@@ -13,7 +13,7 @@ export function IncidentNew() {
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<Severity | "">("");
   const [priority, setPriority] = useState<Priority>("P3");
-  const [source, setSource] = useState("user");
+  const [source, setSource] = useState("");
   const [applicationId, setApplicationId] = useState("");
   const [environment, setEnvironment] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,14 +46,27 @@ export function IncidentNew() {
       setError("Severity wajib dipilih.");
       return;
     }
+    if (source === "") {
+      setError("Source wajib dipilih.");
+      return;
+    }
+    if (environment === "") {
+      setError("Environment wajib dipilih.");
+      return;
+    }
+    if (applicationId === "") {
+      setError("Application wajib dipilih.");
+      return;
+    }
     create.mutate();
   }
 
-  const inputClass = "mt-1 w-full rounded border px-3 py-2 text-sm";
+  const inputClass =
+    "mt-1 w-full rounded border border-mist bg-paper px-3 py-2 text-sm focus:border-iris focus:outline-none";
 
   return (
-    <section className="mx-auto max-w-2xl p-6">
-      <h1 className="text-2xl font-bold">Buat Incident</h1>
+    <section className="w-full p-6">
+      <h1 className="text-2xl font-semibold">Buat Incident</h1>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <label className="block">
           <span className="text-sm font-medium">Title *</span>
@@ -104,12 +117,13 @@ export function IncidentNew() {
             </select>
           </label>
           <label className="block">
-            <span className="text-sm font-medium">Source</span>
+            <span className="text-sm font-medium">Source *</span>
             <select
               value={source}
               onChange={(e) => setSource(e.target.value)}
               className={inputClass}
             >
+              <option value="">Silahkan pilih</option>
               {(meta.data?.sources ?? []).map((s) => (
                 <option key={s.code} value={s.code}>
                   {s.name}
@@ -118,13 +132,13 @@ export function IncidentNew() {
             </select>
           </label>
           <label className="block">
-            <span className="text-sm font-medium">Environment</span>
+            <span className="text-sm font-medium">Environment *</span>
             <select
               value={environment}
               onChange={(e) => setEnvironment(e.target.value)}
               className={inputClass}
             >
-              <option value="">—</option>
+              <option value="">Silahkan pilih</option>
               {(meta.data?.environments ?? []).map((s) => (
                 <option key={s.code} value={s.code}>
                   {s.name}
@@ -134,13 +148,13 @@ export function IncidentNew() {
           </label>
         </div>
         <label className="block">
-          <span className="text-sm font-medium">Application</span>
+          <span className="text-sm font-medium">Application *</span>
           <select
             value={applicationId}
             onChange={(e) => setApplicationId(e.target.value)}
             className={inputClass}
           >
-            <option value="">—</option>
+            <option value="">Silahkan pilih</option>
             {(meta.data?.applications ?? []).map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -149,19 +163,19 @@ export function IncidentNew() {
           </select>
         </label>
         {error !== null && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
         <div className="flex gap-2">
           <button
             type="submit"
             disabled={create.isPending}
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-full bg-iris px-5 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-95 disabled:opacity-50"
           >
             {create.isPending ? "Menyimpan…" : "Buat Incident"}
           </button>
           <Link
             to="/"
-            className="rounded border px-4 py-2 text-sm hover:bg-slate-100"
+            className="rounded-full border border-mist px-4 py-2 text-sm font-semibold text-deep hover:bg-lilac"
           >
             Batal
           </Link>

@@ -93,6 +93,10 @@ type pageMeta struct {
 // HandleListIncidents lists/filters/searches incidents with pagination.
 func HandleListIncidents(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
 		q := r.URL.Query()
 		page, err := strconv.Atoi(q.Get("page"))
 		if q.Get("page") != "" && err != nil {
@@ -105,16 +109,21 @@ func HandleListIncidents(d Deps) http.HandlerFunc {
 			return
 		}
 		f := repository.IncidentFilter{
-			Status:   q.Get("status"),
-			Severity: q.Get("severity"),
-			Priority: q.Get("priority"),
-			Q:        q.Get("q"),
-			Sort:     q.Get("sort"),
-			Order:    q.Get("order"),
-			Page:     page,
-			Limit:    limit,
+			Status:        q.Get("status"),
+			Severity:      q.Get("severity"),
+			Priority:      q.Get("priority"),
+			Q:             q.Get("q"),
+			ApplicationID: q.Get("application"),
+			TeamID:        q.Get("team"),
+			AssigneeID:    q.Get("assignee"),
+			CreatedFrom:   q.Get("created_from"),
+			CreatedTo:     q.Get("created_to"),
+			Sort:          q.Get("sort"),
+			Order:         q.Get("order"),
+			Page:          page,
+			Limit:         limit,
 		}
-		items, total, err := d.Incidents.List(r.Context(), f)
+		items, total, err := d.Incidents.List(r.Context(), actor, f)
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return
@@ -135,10 +144,14 @@ func HandleListIncidents(d Deps) http.HandlerFunc {
 	}
 }
 
-// HandleGetIncident returns one incident or 404.
+// HandleGetIncident returns one incident or 404/403.
 func HandleGetIncident(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		in, err := d.Incidents.Get(r.Context(), chi.URLParam(r, "id"))
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		in, err := d.Incidents.Get(r.Context(), actor, chi.URLParam(r, "id"))
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return
@@ -214,7 +227,11 @@ func HandleAddComment(d Deps) http.HandlerFunc {
 // HandleComments returns the comment list.
 func HandleComments(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := d.Incidents.Comments(r.Context(), chi.URLParam(r, "id"))
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		items, err := d.Incidents.Comments(r.Context(), actor, chi.URLParam(r, "id"))
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return
@@ -229,7 +246,11 @@ func HandleComments(d Deps) http.HandlerFunc {
 // HandleTimeline returns the audit trail oldest-first.
 func HandleTimeline(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := d.Incidents.Timeline(r.Context(), chi.URLParam(r, "id"))
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		items, err := d.Incidents.Timeline(r.Context(), actor, chi.URLParam(r, "id"))
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return
