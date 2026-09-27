@@ -33,7 +33,11 @@ func HandleAddInvestigation(d Deps) http.HandlerFunc {
 // HandleInvestigations returns the investigation records.
 func HandleInvestigations(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := d.Incidents.Investigations(r.Context(), chi.URLParam(r, "id"))
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		items, err := d.Incidents.Investigations(r.Context(), actor, chi.URLParam(r, "id"))
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return
@@ -68,7 +72,11 @@ func HandleAddFix(d Deps) http.HandlerFunc {
 // HandleFixes returns the fix records.
 func HandleFixes(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := d.Incidents.Fixes(r.Context(), chi.URLParam(r, "id"))
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		items, err := d.Incidents.Fixes(r.Context(), actor, chi.URLParam(r, "id"))
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return
@@ -104,7 +112,11 @@ func HandleVerify(d Deps) http.HandlerFunc {
 // HandleVerifications returns the verification records.
 func HandleVerifications(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := d.Incidents.Verifications(r.Context(), chi.URLParam(r, "id"))
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		items, err := d.Incidents.Verifications(r.Context(), actor, chi.URLParam(r, "id"))
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return

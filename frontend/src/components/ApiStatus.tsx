@@ -5,20 +5,20 @@ export function ApiStatus() {
 
   if (isPending) {
     return (
-      <span className="rounded bg-slate-200 px-2 py-1 text-xs text-slate-600">
+      <span className="rounded-full bg-chalk px-2 py-1 text-xs text-veil">
         API: menghubungkan…
       </span>
     );
   }
   if (isError || data?.status !== "ok") {
     return (
-      <span className="rounded bg-red-100 px-2 py-1 text-xs text-red-700">
+      <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
         API: tidak terjangkau
       </span>
     );
   }
   return (
-    <span className="rounded bg-green-100 px-2 py-1 text-xs text-green-700">
+    <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
       API: OK
     </span>
   );

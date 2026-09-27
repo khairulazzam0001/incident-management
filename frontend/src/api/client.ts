@@ -1,8 +1,11 @@
 import type {
   ApiErrorBody,
+  Attachment,
+  AttachmentListResponse,
   Comment,
   CommentListResponse,
   CreateIncidentInput,
+  Dashboard,
   Fix,
   FixListResponse,
   HealthResponse,
@@ -12,6 +15,7 @@ import type {
   InvestigationListResponse,
   LoginResponse,
   Meta,
+  NotificationListResponse,
   TimelineResponse,
   UserListResponse,
   Verification,
@@ -93,6 +97,11 @@ export interface IncidentFilters {
   severity?: string;
   priority?: string;
   q?: string;
+  application?: string;
+  team?: string;
+  assignee?: string;
+  created_from?: string;
+  created_to?: string;
   sort?: string;
   order?: string;
   page?: number;
@@ -106,6 +115,11 @@ function toQuery(f: IncidentFilters): string {
   if (f.severity) params.set("severity", f.severity);
   if (f.priority) params.set("priority", f.priority);
   if (f.q) params.set("q", f.q);
+  if (f.application) params.set("application", f.application);
+  if (f.team) params.set("team", f.team);
+  if (f.assignee) params.set("assignee", f.assignee);
+  if (f.created_from) params.set("created_from", f.created_from);
+  if (f.created_to) params.set("created_to", f.created_to);
   if (f.sort) params.set("sort", f.sort);
   if (f.order) params.set("order", f.order);
   if (f.page !== undefined) params.set("page", String(f.page));
@@ -210,6 +224,76 @@ export const api = {
   },
   getHealth(signal?: AbortSignal): Promise<HealthResponse> {
     return request<HealthResponse>("/health", { signal });
+  },
+  getAttachments(id: string, signal?: AbortSignal): Promise<AttachmentListResponse> {
+    return request<AttachmentListResponse>(`/api/incidents/${id}/attachments`, {
+      signal,
+    });
+  },
+  async uploadAttachment(id: string, file: File): Promise<Attachment> {
+    const headers: Record<string, string> = {};
+    const token = getStoredToken();
+    if (token !== null) headers.Authorization = `Bearer ${token}`;
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE_URL}/api/incidents/${id}/attachments`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    const data: unknown = await res.json().catch(() => null);
+    if (!res.ok) {
+      if (isApiErrorBody(data)) throw new ApiError(res.status, data);
+      throw new ApiError(res.status, {
+        code: "UNKNOWN_ERROR",
+        message: `Upload gagal (HTTP ${res.status}).`,
+      });
+    }
+    return data as Attachment;
+  },
+  async downloadAttachment(id: string, aid: string): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    const token = getStoredToken();
+    if (token !== null) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(
+      `${BASE_URL}/api/incidents/${id}/attachments/${aid}/download`,
+      { headers },
+    );
+    if (!res.ok) {
+      const data: unknown = await res.json().catch(() => null);
+      if (isApiErrorBody(data)) throw new ApiError(res.status, data);
+      throw new ApiError(res.status, {
+        code: "UNKNOWN_ERROR",
+        message: `Unduh gagal (HTTP ${res.status}).`,
+      });
+    }
+    return res.blob();
+  },
+  getDashboard(signal?: AbortSignal): Promise<Dashboard> {
+    return request<Dashboard>("/api/dashboard", { signal });
+  },
+  getNotifications(unreadOnly: boolean, signal?: AbortSignal): Promise<NotificationListResponse> {
+    return request<NotificationListResponse>(
+      `/api/notifications${unreadOnly ? "?unread=true" : ""}`,
+      { signal },
+    );
+  },
+  markNotificationRead(id: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/api/notifications/${id}/read`, {
+      method: "POST",
+    });
+  },
+  createApplication(input: { code: string; name: string }) {
+    return request(`/api/master/applications`, { method: "POST", body: input });
+  },
+  deleteApplication(id: string): Promise<void> {
+    return request<void>(`/api/master/applications/${id}`, { method: "DELETE" });
+  },
+  createTeam(input: { code: string; name: string }) {
+    return request(`/api/master/teams`, { method: "POST", body: input });
+  },
+  deleteTeam(id: string): Promise<void> {
+    return request<void>(`/api/master/teams/${id}`, { method: "DELETE" });
   },
 };
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/khairulazzam0001/incident-management/backend/internal/config"
 	"github.com/khairulazzam0001/incident-management/backend/internal/handler"
+	"github.com/khairulazzam0001/incident-management/backend/internal/notify"
 	"github.com/khairulazzam0001/incident-management/backend/internal/repository"
 	"github.com/khairulazzam0001/incident-management/backend/internal/service"
 )
@@ -54,7 +55,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("init auth service: %w", err)
 	}
-	incSvc := service.NewIncidentService(repo)
+	mailer := notify.NewSender(repo, notify.FromEnv(os.Getenv), log)
+	if mailer.Enabled() {
+		log.Info("smtp email enabled")
+	} else {
+		log.Info("smtp tidak dikonfigurasi, email dicatat skipped")
+	}
+	incSvc := service.NewIncidentService(repo, mailer, log, service.DefaultUploadConfig(cfg.UploadDir))
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,

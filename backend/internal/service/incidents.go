@@ -3,23 +3,29 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/khairulazzam0001/incident-management/backend/internal/model"
+	"github.com/khairulazzam0001/incident-management/backend/internal/notify"
 	"github.com/khairulazzam0001/incident-management/backend/internal/repository"
 )
 
 // IncidentService implements US-01–US-06 workflow rules (PRD §8) on top of queries.
 type IncidentService struct {
-	repo *repository.Repository
+	repo      *repository.Repository
+	mailer    *notify.Sender
+	log       *slog.Logger
+	uploadCfg UploadConfig
 }
 
-// NewIncidentService creates the service.
-func NewIncidentService(repo *repository.Repository) *IncidentService {
-	return &IncidentService{repo: repo}
+// NewIncidentService creates the service. Mailer may be nil (email skipped).
+func NewIncidentService(repo *repository.Repository, mailer *notify.Sender, log *slog.Logger, uploadCfg UploadConfig) *IncidentService {
+	return &IncidentService{repo: repo, mailer: mailer, log: log, uploadCfg: uploadCfg}
 }
 
 func validUUID(id string) bool {
@@ -90,11 +96,12 @@ func (s *IncidentService) Create(ctx context.Context, actor *model.AuthUser, in 
 	if err != nil {
 		return nil, fmt.Errorf("create incident: %w", err)
 	}
+	s.fanout(ctx, created, actor, model.NotifCreated)
 	return created, nil
 }
 
 // List validates paging params and returns a page (FR-02).
-func (s *IncidentService) List(ctx context.Context, f repository.IncidentFilter) ([]*model.Incident, int, error) {
+func (s *IncidentService) List(ctx context.Context, actor *model.AuthUser, f repository.IncidentFilter) ([]*model.Incident, int, error) {
 	if f.Page <= 0 {
 		f.Page = 1
 	}
@@ -104,6 +111,27 @@ func (s *IncidentService) List(ctx context.Context, f repository.IncidentFilter)
 	if f.Limit > 100 {
 		return nil, 0, BadRequest("VALIDATION_ERROR", "Limit maksimal 100.", map[string]string{"field": "limit"})
 	}
+	if actor.Role == model.RoleUser {
+		f.InvolvedID = actor.ID
+	}
+	if f.AssigneeID == "me" {
+		f.AssigneeID = actor.ID
+	}
+	for field, id := range map[string]string{
+		"application_id": f.ApplicationID, "team_id": f.TeamID, "assignee": f.AssigneeID,
+	} {
+		if id != "" && !validUUID(id) {
+			return nil, 0, BadRequest("VALIDATION_ERROR", "Filter tidak valid.", map[string]string{"field": field})
+		}
+	}
+	for field, d := range map[string]string{"created_from": f.CreatedFrom, "created_to": f.CreatedTo} {
+		if d == "" {
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", d); err != nil {
+			return nil, 0, BadRequest("VALIDATION_ERROR", "Format tanggal YYYY-MM-DD.", map[string]string{"field": field})
+		}
+	}
 	items, total, err := s.repo.ListIncidents(ctx, f)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list incidents: %w", err)
@@ -111,8 +139,8 @@ func (s *IncidentService) List(ctx context.Context, f repository.IncidentFilter)
 	return items, total, nil
 }
 
-// Get returns one incident or 404.
-func (s *IncidentService) Get(ctx context.Context, id string) (*model.Incident, error) {
+// Get returns one incident or 404/403 (read scope, PRD §15).
+func (s *IncidentService) Get(ctx context.Context, actor *model.AuthUser, id string) (*model.Incident, error) {
 	if err := requireIncidentID(id); err != nil {
 		return nil, err
 	}
@@ -122,6 +150,9 @@ func (s *IncidentService) Get(ctx context.Context, id string) (*model.Incident, 
 			return nil, NotFound("Incident")
 		}
 		return nil, fmt.Errorf("get incident: %w", err)
+	}
+	if err := s.checkRead(actor, in); err != nil {
+		return nil, err
 	}
 	return in, nil
 }
@@ -162,6 +193,7 @@ func (s *IncidentService) ChangeStatus(ctx context.Context, actor *model.AuthUse
 	if err != nil {
 		return nil, fmt.Errorf("update status: %w", err)
 	}
+	s.fanout(ctx, updated, actor, model.NotifStatusChanged)
 	return updated, nil
 }
 
@@ -219,6 +251,7 @@ func (s *IncidentService) Assign(ctx context.Context, actor *model.AuthUser, id 
 	if err != nil {
 		return nil, fmt.Errorf("assign incident: %w", err)
 	}
+	s.fanout(ctx, updated, actor, model.NotifAssigned)
 	return updated, nil
 }
 
@@ -237,24 +270,28 @@ func (s *IncidentService) AddComment(ctx context.Context, actor *model.AuthUser,
 		}
 		return nil, fmt.Errorf("get incident: %w", err)
 	}
-	_ = cur
 	c, err := s.repo.AddComment(ctx, id, actor.ID, body)
 	if err != nil {
 		return nil, fmt.Errorf("add comment: %w", err)
 	}
+	s.fanout(ctx, cur, actor, model.NotifComment)
 	return c, nil
 }
 
-// Comments returns the comment list (FR-08) or 404.
-func (s *IncidentService) Comments(ctx context.Context, id string) ([]*model.Comment, error) {
+// Comments returns the comment list (FR-08) or 404/403.
+func (s *IncidentService) Comments(ctx context.Context, actor *model.AuthUser, id string) ([]*model.Comment, error) {
 	if err := requireIncidentID(id); err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.GetIncident(ctx, id); err != nil {
+	cur, err := s.repo.GetIncident(ctx, id)
+	if err != nil {
 		if isNotFound(err) {
 			return nil, NotFound("Incident")
 		}
 		return nil, fmt.Errorf("get incident: %w", err)
+	}
+	if err := s.checkRead(actor, cur); err != nil {
+		return nil, err
 	}
 	items, err := s.repo.ListComments(ctx, id)
 	if err != nil {
@@ -263,16 +300,20 @@ func (s *IncidentService) Comments(ctx context.Context, id string) ([]*model.Com
 	return items, nil
 }
 
-// Timeline returns the audit trail oldest-first (FR-08).
-func (s *IncidentService) Timeline(ctx context.Context, id string) ([]*model.Activity, error) {
+// Timeline returns the audit trail oldest-first (FR-08) or 404/403.
+func (s *IncidentService) Timeline(ctx context.Context, actor *model.AuthUser, id string) ([]*model.Activity, error) {
 	if err := requireIncidentID(id); err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.GetIncident(ctx, id); err != nil {
+	cur, err := s.repo.GetIncident(ctx, id)
+	if err != nil {
 		if isNotFound(err) {
 			return nil, NotFound("Incident")
 		}
 		return nil, fmt.Errorf("get incident: %w", err)
+	}
+	if err := s.checkRead(actor, cur); err != nil {
+		return nil, err
 	}
 	items, err := s.repo.ListActivities(ctx, id)
 	if err != nil {

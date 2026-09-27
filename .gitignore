@@ -5,12 +5,14 @@
 # Go
 /backend/*.exe
 /backend/api
-/bin/
+/backend/uploads/
+bin/
 
 # Node / frontend
 node_modules/
 frontend/dist/
 frontend/dist-ssr/
+frontend/.vite/
 *.local
 
 # OS / editor

@@ -123,6 +123,49 @@ type Fix struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// Attachment is a trans_incident_attachment row (FR-09).
+type Attachment struct {
+	ID         string    `json:"id"`
+	IncidentID string    `json:"incident_id"`
+	FileName   string    `json:"file_name"`
+	MimeType   string    `json:"mime_type"`
+	SizeBytes  int64     `json:"size_bytes"`
+	UploadedBy *string   `json:"uploaded_by"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Notification types (PRD §13).
+const (
+	NotifCreated            = "created"
+	NotifAssigned           = "assigned"
+	NotifStatusChanged      = "status_changed"
+	NotifComment            = "comment"
+	NotifVerificationFailed = "verification_failed"
+	NotifResolved           = "resolved"
+	NotifClosed             = "closed"
+)
+
+// Email statuses for the email channel.
+const (
+	EmailPending = "pending"
+	EmailSent    = "sent"
+	EmailFailed  = "failed"
+	EmailSkipped = "skipped"
+)
+
+// Notification is a trans_notification row: one in-app item per recipient per
+// event, plus the email-channel delivery state.
+type Notification struct {
+	ID          string  `json:"id"`
+	IncidentID  string  `json:"incident_id"`
+	Type        string  `json:"type"`
+	RecipientID string  `json:"recipient_id"`
+	ActorID     *string `json:"actor_id"`
+	ReadAt      *string `json:"read_at"`
+	EmailStatus string  `json:"email_status"`
+	CreatedAt   string  `json:"created_at"`
+}
+
 // Verification results (US-05/FR-07).
 const (
 	VerificationPass = "PASS"

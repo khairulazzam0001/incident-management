@@ -13,6 +13,7 @@ type Config struct {
 	Port               string
 	JWTSecret          string
 	CORSAllowedOrigins []string
+	UploadDir          string
 }
 
 // Load reads configuration from the environment and fails fast on missing values.
@@ -29,9 +30,13 @@ func Load() (Config, error) {
 		DatabaseURL: get("DATABASE_URL"),
 		Port:        strings.TrimSpace(os.Getenv("PORT")),
 		JWTSecret:   get("JWT_SECRET"),
+		UploadDir:   strings.TrimSpace(os.Getenv("UPLOAD_DIR")),
 	}
 	if cfg.Port == "" {
 		cfg.Port = "8080"
+	}
+	if cfg.UploadDir == "" {
+		cfg.UploadDir = "./uploads"
 	}
 	origins := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	if origins == "" {
