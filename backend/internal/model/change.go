@@ -213,3 +213,38 @@ type ChangeIncidentLink struct {
 	CreatedBy      *string   `json:"created_by"`
 	CreatedAt      time.Time `json:"created_at"`
 }
+
+// Implementation outcomes (CM-05).
+const (
+	OutcomeSuccess    = "SUCCESS"
+	OutcomeFailed     = "FAILED"
+	OutcomeRolledBack = "ROLLED_BACK"
+)
+
+// RequiresPIR reports whether closing needs post-implementation review notes
+// (EMERGENCY or a non-successful outcome, CM-06).
+func RequiresPIR(c *Change) bool {
+	return c.Type == ChangeTypeEmergency || c.Outcome == nil || *c.Outcome != OutcomeSuccess
+}
+
+// Change activity types added in CM-2.
+const (
+	ChangeActivitySchedule = "schedule"
+	ChangeActivityStart    = "start"
+	ChangeActivityComplete = "complete"
+	ChangeActivityClose    = "close"
+)
+
+// Change notification types (§13).
+const (
+	NotifChangeSubmitted        = "change_submitted"
+	NotifChangeApproved         = "change_approved"
+	NotifChangeRejected         = "change_rejected"
+	NotifChangeChangesRequested = "change_changes_requested"
+	NotifChangeScheduled        = "change_scheduled"
+	NotifChangeStarted          = "change_started"
+	NotifChangeFailed           = "change_failed"
+	NotifChangeClosed           = "change_closed"
+	NotifChangeCancelled        = "change_cancelled"
+	NotifChangeCausedIncident   = "change_caused_incident"
+)

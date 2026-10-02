@@ -103,6 +103,10 @@ export function canViewChanges(role: string): boolean {
   return role !== "" && role !== "User";
 }
 
+export function canLinkChange(role: string): boolean {
+  return role !== "User" && role !== "QA" && role !== "";
+}
+
 export function canCreateChange(role: string): boolean {
   return (
     role === "SystemAnalyst" || role === "Developer" || role === "DevOps" || role === "ManagerLead"

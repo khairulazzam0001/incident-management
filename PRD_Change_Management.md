@@ -3,7 +3,7 @@
 **Produk:** Incident Management System
 **Versi dokumen:** 0.2 (keputusan Q1–Q7 disepakati)
 **Tanggal:** 2026-10-01
-**Status:** Disetujui — eksekusi bertahap CM-1 → CM-3
+**Status:** Disetujui — CM-1, CM-2, CM-3 terimplementasi (CM-FR-13 attachment CR belum)
 **Referensi:** `PRD_Incident_Management_MVP(1).pdf` §4 (Non-Goals) dan §21 (Recommended Future Enhancements)
 
 ---

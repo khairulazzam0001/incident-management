@@ -165,6 +165,19 @@ GET    /api/changes/:id/timeline
 POST   /api/changes/:id/comments
 GET    /api/changes/:id/comments
 GET    /api/changes/:id/incidents
+# CM-2:
+POST   /api/changes/:id/schedule          # {planned_start, planned_end} RFC3339 → {change, conflicts[]}
+POST   /api/changes/:id/start             # SCHEDULED (atau EMERGENCY APPROVED) → IMPLEMENTING
+POST   /api/changes/:id/complete          # {outcome: SUCCESS|FAILED|ROLLED_BACK, outcome_notes}
+POST   /api/changes/:id/close             # {review_notes}; PIR wajib bila EMERGENCY / outcome ≠ SUCCESS
+POST   /api/changes/:id/incidents         # {incident_id, relation: FIX_FOR|CAUSED_BY}
+DELETE /api/changes/:id/incidents/:incidentId?relation=
+# CM-3:
+GET    /api/changes/summary               # agregat change (PRD CM §14)
+GET    /api/changes?sort=planned_start    # urut jadwal untuk kalender
+GET    /api/incidents/:id/recent-changes  # change app+env sama, mulai ≤ 72 jam (PRD CM §8.3)
+# Notifikasi: item memuat incident_id ATAU change_id (nullable, CM-2).
+# Gate: PATCH status FIXING → VERIFYING incident production tanpa change FIX_FOR terimplementasi → 409 CHANGE_REQUIRED.
 ```
 
 Body create incident (field lengkap menyusul master data):

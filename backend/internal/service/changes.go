@@ -292,6 +292,11 @@ func (s *IncidentService) SubmitChange(ctx context.Context, actor *model.AuthUse
 	if err != nil {
 		return nil, staleChange(err)
 	}
+	if updated.Status == model.ChangeApproved {
+		s.changeFanout(ctx, updated, actor, model.NotifChangeApproved)
+	} else {
+		s.changeFanout(ctx, updated, actor, model.NotifChangeSubmitted)
+	}
 	return updated, nil
 }
 
@@ -305,10 +310,10 @@ type ApprovalInput struct {
 // change (CM-03). Single approver with segregation of duties.
 func (s *IncidentService) DecideChange(ctx context.Context, actor *model.AuthUser, id string, in ApprovalInput) (*model.Change, error) {
 	in.Reason = strings.TrimSpace(in.Reason)
-	targets := map[string]struct{ to, decision string }{
-		"APPROVE":         {model.ChangeApproved, model.DecisionApproved},
-		"REJECT":          {model.ChangeRejected, model.DecisionRejected},
-		"REQUEST_CHANGES": {model.ChangeDraft, model.DecisionChangesRequested},
+	targets := map[string]struct{ to, decision, notif string }{
+		"APPROVE":         {model.ChangeApproved, model.DecisionApproved, model.NotifChangeApproved},
+		"REJECT":          {model.ChangeRejected, model.DecisionRejected, model.NotifChangeRejected},
+		"REQUEST_CHANGES": {model.ChangeDraft, model.DecisionChangesRequested, model.NotifChangeChangesRequested},
 	}
 	t, ok := targets[in.Decision]
 	if !ok {
@@ -344,6 +349,7 @@ func (s *IncidentService) DecideChange(ctx context.Context, actor *model.AuthUse
 	if err != nil {
 		return nil, staleChange(err)
 	}
+	s.changeFanout(ctx, updated, actor, t.notif)
 	return updated, nil
 }
 
@@ -371,6 +377,7 @@ func (s *IncidentService) CancelChange(ctx context.Context, actor *model.AuthUse
 	if err != nil {
 		return nil, staleChange(err)
 	}
+	s.changeFanout(ctx, updated, actor, model.NotifChangeCancelled)
 	return updated, nil
 }
 

@@ -153,7 +153,9 @@ export interface AttachmentListResponse {
 
 export interface Notification {
   id: string;
-  incident_id: string;
+  // Salah satu dari incident_id / change_id terisi (PRD_Change_Management.md §13).
+  incident_id: string | null;
+  change_id: string | null;
   type: string;
   recipient_id: string;
   actor_id: string | null;
@@ -348,6 +350,28 @@ export interface ChangeIncidentLink {
   relation: "FIX_FOR" | "CAUSED_BY";
   created_by: string | null;
   created_at: string;
+}
+
+export type ChangeOutcome = "SUCCESS" | "FAILED" | "ROLLED_BACK";
+export type ChangeRelation = "FIX_FOR" | "CAUSED_BY";
+
+export interface ScheduleResult {
+  change: Change;
+  conflicts: Change[];
+}
+
+export interface ChangeSummary {
+  active_total: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+  by_risk: Record<string, number>;
+  upcoming: Change[];
+  success_rate: number | null;
+  failure_rate: number | null;
+  emergency_ratio: number | null;
+  avg_hours_submit_to_approve: number | null;
+  avg_hours_approve_to_implement: number | null;
+  pir_completion_rate: number | null;
 }
 
 export interface DataList<T> {

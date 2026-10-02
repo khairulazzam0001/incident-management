@@ -28,7 +28,7 @@ func (s *IncidentService) fanout(ctx context.Context, in *model.Incident, actor 
 	rows := make([]repository.NotificationInput, 0, len(recipients))
 	for _, rid := range recipients {
 		rows = append(rows, repository.NotificationInput{
-			IncidentID:  in.ID,
+			IncidentID:  &in.ID,
 			Type:        ntype,
 			RecipientID: rid,
 			ActorID:     &actor.ID,

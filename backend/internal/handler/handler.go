@@ -67,9 +67,11 @@ func NewRouter(d Deps) http.Handler {
 		r.Delete("/api/master/teams/{id}", HandleDeleteTeam(d))
 		r.Get("/api/incidents/{id}/timeline", HandleTimeline(d))
 		r.Get("/api/incidents/{id}/changes", HandleIncidentChanges(d))
+		r.Get("/api/incidents/{id}/recent-changes", HandleRecentChanges(d))
 
 		// Change Management CM-1 (PRD_Change_Management.md §15).
 		r.Get("/api/changes", HandleListChanges(d))
+		r.Get("/api/changes/summary", HandleChangeSummary(d))
 		r.Post("/api/changes", HandleCreateChange(d))
 		r.Get("/api/changes/{id}", HandleGetChange(d))
 		r.Patch("/api/changes/{id}", HandleUpdateChange(d))
@@ -81,6 +83,14 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/changes/{id}/comments", HandleAddChangeComment(d))
 		r.Get("/api/changes/{id}/comments", HandleChangeComments(d))
 		r.Get("/api/changes/{id}/incidents", HandleChangeIncidents(d))
+
+		// Change Management CM-2.
+		r.Post("/api/changes/{id}/schedule", HandleScheduleChange(d))
+		r.Post("/api/changes/{id}/start", HandleStartChange(d))
+		r.Post("/api/changes/{id}/complete", HandleCompleteChange(d))
+		r.Post("/api/changes/{id}/close", HandleCloseChange(d))
+		r.Post("/api/changes/{id}/incidents", HandleLinkIncident(d))
+		r.Delete("/api/changes/{id}/incidents/{incidentId}", HandleUnlinkIncident(d))
 	})
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

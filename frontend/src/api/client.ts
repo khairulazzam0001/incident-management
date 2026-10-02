@@ -9,6 +9,10 @@ import type {
   ChangeIncidentLink,
   ChangeInput,
   ChangeListResponse,
+  ChangeOutcome,
+  ChangeRelation,
+  ChangeSummary,
+  ScheduleResult,
   DataList,
   AttachmentListResponse,
   Comment,
@@ -145,6 +149,9 @@ export interface ChangeFilters {
   environment?: string;
   requester?: string;
   implementer?: string;
+  scheduled_from?: string;
+  scheduled_to?: string;
+  sort?: string;
   q?: string;
   page?: number;
   limit?: number;
@@ -161,6 +168,9 @@ function changeQuery(f: ChangeFilters): string {
     "environment",
     "requester",
     "implementer",
+    "scheduled_from",
+    "scheduled_to",
+    "sort",
     "q",
   ] as const;
   for (const k of keys) {
@@ -381,6 +391,49 @@ export const api = {
   },
   getChangeIncidents(id: string, signal?: AbortSignal): Promise<DataList<ChangeIncidentLink>> {
     return request<DataList<ChangeIncidentLink>>(`/api/changes/${id}/incidents`, { signal });
+  },
+  scheduleChange(id: string, plannedStart: string, plannedEnd: string): Promise<ScheduleResult> {
+    return request<ScheduleResult>(`/api/changes/${id}/schedule`, {
+      method: "POST",
+      body: { planned_start: plannedStart, planned_end: plannedEnd },
+    });
+  },
+  startChange(id: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/start`, { method: "POST" });
+  },
+  completeChange(id: string, outcome: ChangeOutcome, outcomeNotes: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/complete`, {
+      method: "POST",
+      body: { outcome, outcome_notes: outcomeNotes },
+    });
+  },
+  closeChange(id: string, reviewNotes: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/close`, {
+      method: "POST",
+      body: { review_notes: reviewNotes },
+    });
+  },
+  linkIncident(
+    id: string,
+    incidentId: string,
+    relation: ChangeRelation,
+  ): Promise<DataList<ChangeIncidentLink>> {
+    return request<DataList<ChangeIncidentLink>>(`/api/changes/${id}/incidents`, {
+      method: "POST",
+      body: { incident_id: incidentId, relation },
+    });
+  },
+  unlinkIncident(id: string, incidentId: string, relation: ChangeRelation): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(
+      `/api/changes/${id}/incidents/${incidentId}?relation=${relation}`,
+      { method: "DELETE" },
+    );
+  },
+  getChangeSummary(signal?: AbortSignal): Promise<ChangeSummary> {
+    return request<ChangeSummary>("/api/changes/summary", { signal });
+  },
+  getRecentChanges(id: string, signal?: AbortSignal): Promise<DataList<Change>> {
+    return request<DataList<Change>>(`/api/incidents/${id}/recent-changes`, { signal });
   },
   getIncidentChanges(id: string, signal?: AbortSignal): Promise<DataList<ChangeIncidentLink>> {
     return request<DataList<ChangeIncidentLink>>(`/api/incidents/${id}/changes`, { signal });

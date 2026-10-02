@@ -63,6 +63,7 @@ func HandleListChanges(d Deps) http.HandlerFunc {
 			ScheduledFrom: q.Get("scheduled_from"),
 			ScheduledTo:   q.Get("scheduled_to"),
 			Q:             q.Get("q"),
+			Sort:          q.Get("sort"),
 			Page:          page,
 			Limit:         limit,
 		}
@@ -272,6 +273,153 @@ func HandleIncidentChanges(d Deps) http.HandlerFunc {
 			return
 		}
 		items, err := d.Incidents.IncidentChanges(r.Context(), actor, chi.URLParam(r, "id"))
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusOK, map[string]any{"data": items})
+	}
+}
+
+// HandleScheduleChange sets the planned window; returns change + conflicts.
+func HandleScheduleChange(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		var in service.ScheduleInput
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		res, err := d.Incidents.ScheduleChange(r.Context(), actor, chi.URLParam(r, "id"), in)
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusOK, res)
+	}
+}
+
+// HandleStartChange moves the change to IMPLEMENTING.
+func HandleStartChange(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		c, err := d.Incidents.StartChange(r.Context(), actor, chi.URLParam(r, "id"))
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusOK, c)
+	}
+}
+
+// HandleCompleteChange records the implementation outcome.
+func HandleCompleteChange(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		var in service.CompleteInput
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		c, err := d.Incidents.CompleteChange(r.Context(), actor, chi.URLParam(r, "id"), in)
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusOK, c)
+	}
+}
+
+// HandleCloseChange closes a reviewed change (PIR).
+func HandleCloseChange(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			ReviewNotes string `json:"review_notes"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		c, err := d.Incidents.CloseChange(r.Context(), actor, chi.URLParam(r, "id"), body.ReviewNotes)
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusOK, c)
+	}
+}
+
+// HandleLinkIncident links an incident to a change (201, returns all links).
+func HandleLinkIncident(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		var in service.LinkInput
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		items, err := d.Incidents.LinkIncident(r.Context(), actor, chi.URLParam(r, "id"), in)
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusCreated, map[string]any{"data": items})
+	}
+}
+
+// HandleUnlinkIncident removes a link; relation comes from ?relation=.
+func HandleUnlinkIncident(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		err := d.Incidents.UnlinkIncident(r.Context(), actor, chi.URLParam(r, "id"),
+			chi.URLParam(r, "incidentId"), r.URL.Query().Get("relation"))
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// HandleChangeSummary returns the change dashboard aggregates.
+func HandleChangeSummary(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		sum, err := d.Incidents.ChangeSummary(r.Context(), actor)
+		if err != nil {
+			writeServiceError(d, w, r, err)
+			return
+		}
+		apierror.WriteJSON(w, http.StatusOK, sum)
+	}
+}
+
+// HandleRecentChanges returns recent changes on the incident's app/env.
+func HandleRecentChanges(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := actorOf(d, w, r)
+		if !ok {
+			return
+		}
+		items, err := d.Incidents.RecentChanges(r.Context(), actor, chi.URLParam(r, "id"))
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return
