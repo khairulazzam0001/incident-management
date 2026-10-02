@@ -97,3 +97,14 @@ export function useAuth(): AuthContextValue {
 export function isCoordinator(role: string): boolean {
   return role === "HelpDesk" || role === "SystemAnalyst" || role === "ManagerLead";
 }
+
+// Change Management (PRD_Change_Management.md §5).
+export function canViewChanges(role: string): boolean {
+  return role !== "" && role !== "User";
+}
+
+export function canCreateChange(role: string): boolean {
+  return (
+    role === "SystemAnalyst" || role === "Developer" || role === "DevOps" || role === "ManagerLead"
+  );
+}

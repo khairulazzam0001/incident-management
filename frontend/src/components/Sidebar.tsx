@@ -1,7 +1,8 @@
 import { NavLink } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { canViewChanges, useAuth } from "../auth/AuthContext";
 import {
   BellIcon,
+  ChangeIcon,
   CollapseIcon,
   DashboardIcon,
   DatabaseIcon,
@@ -37,6 +38,9 @@ export function Sidebar({
 
   const items: NavItem[] = [
     { to: "/", label: "Incidents", icon: TicketIcon },
+    ...(user !== null && canViewChanges(user.role)
+      ? [{ to: "/changes", label: "Changes", icon: ChangeIcon }]
+      : []),
     { to: "/dashboard", label: "Dashboard", icon: DashboardIcon },
     { to: "/my", label: "My Incidents", icon: UserIcon },
     { to: "/master", label: "Master Data", icon: DatabaseIcon },

@@ -5,10 +5,11 @@ import { Link, useParams } from "react-router-dom";
 import { ALLOWED_TRANSITIONS } from "../api/types";
 import type { IncidentStatus } from "../api/types";
 import { ApiError, api } from "../api/client";
-import { isCoordinator, useAuth } from "../auth/AuthContext";
+import { canCreateChange, canViewChanges, isCoordinator, useAuth } from "../auth/AuthContext";
 import { useMeta, useUsers } from "../hooks/useMeta";
 import { PriorityBadge } from "../components/PriorityBadge";
 import { SeverityBadge } from "../components/SeverityBadge";
+import { ChangeStatusBadge } from "../components/ChangeStatusBadge";
 import { StatusBadge } from "../components/StatusBadge";
 
 function formatTime(iso: string | null): string {
@@ -35,6 +36,8 @@ function activityLabel(type: string, from: string | null, to: string | null): st
       return "Verification disubmit";
     case "reopen":
       return "Incident dibuka kembali";
+    case "change_link":
+      return "Ditautkan ke change request";
     default:
       return type;
   }
@@ -94,6 +97,12 @@ export function IncidentDetail() {
     queryFn: ({ signal }) => api.getVerifications(incidentId, signal),
     enabled: incidentId !== "",
   });
+  const showChanges = user !== null && canViewChanges(user.role);
+  const changesQuery = useQuery({
+    queryKey: ["incident-changes", incidentId],
+    queryFn: ({ signal }) => api.getIncidentChanges(incidentId, signal),
+    enabled: incidentId !== "" && showChanges,
+  });
   const attachmentsQuery = useQuery({
     queryKey: ["attachments", incidentId],
     queryFn: ({ signal }) => api.getAttachments(incidentId, signal),
@@ -117,6 +126,7 @@ export function IncidentDetail() {
     queryClient.invalidateQueries({ queryKey: ["fixes", incidentId] });
     queryClient.invalidateQueries({ queryKey: ["verifications", incidentId] });
     queryClient.invalidateQueries({ queryKey: ["attachments", incidentId] });
+    queryClient.invalidateQueries({ queryKey: ["incident-changes", incidentId] });
     queryClient.invalidateQueries({ queryKey: ["incidents"] });
   }
 
@@ -659,6 +669,39 @@ export function IncidentDetail() {
               </button>
             </form>
           )}
+        </div>
+      )}
+
+      {showChanges && (
+        <div className="rounded-lg border border-mist bg-paper p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">Linked Changes</h2>
+            {user !== null && canCreateChange(user.role) && incident.status !== "CLOSED" && (
+              <Link
+                to={`/changes/new?incident=${incident.id}`}
+                className="rounded-full border border-mist px-4 py-1 text-sm font-semibold text-deep hover:bg-lilac"
+              >
+                Buat Change Request
+              </Link>
+            )}
+          </div>
+          <ul className="mt-2 space-y-2 text-sm">
+            {(changesQuery.data?.data ?? []).map((l) => (
+              <li key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-chalk p-3">
+                <span className="rounded-full border border-mist bg-paper px-2 py-0.5 text-xs font-semibold text-deep">
+                  {l.relation}
+                </span>
+                <Link to={`/changes/${l.change_id}`} className="font-mono text-xs text-iris hover:underline">
+                  {l.change_no}
+                </Link>
+                <span className="min-w-0 flex-1 truncate">{l.change_title}</span>
+                <ChangeStatusBadge status={l.change_status} />
+              </li>
+            ))}
+            {changesQuery.data && changesQuery.data.data.length === 0 && (
+              <li className="text-veil">Belum ada change request terkait.</li>
+            )}
+          </ul>
         </div>
       )}
 

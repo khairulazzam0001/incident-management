@@ -37,7 +37,8 @@ func (r *Repository) CreateTeam(ctx context.Context, code, name string) (*model.
 func (r *Repository) DeleteApplication(ctx context.Context, id string) (bool, bool, error) {
 	var n int
 	if err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM trans_incident WHERE application_id = $1`, id).Scan(&n); err != nil {
+		`SELECT (SELECT COUNT(*) FROM trans_incident WHERE application_id = $1)
+			+ (SELECT COUNT(*) FROM trans_change WHERE application_id = $1)`, id).Scan(&n); err != nil {
 		return false, false, fmt.Errorf("check application usage: %w", err)
 	}
 	if n > 0 {
@@ -68,6 +69,14 @@ func (r *Repository) DeleteTeam(ctx context.Context, id string) (bool, bool, err
 		return false, false, fmt.Errorf("check team members: %w", err)
 	}
 	if member > 0 {
+		return true, true, nil
+	}
+	var changes int
+	if err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM trans_change WHERE team_id = $1`, id).Scan(&changes); err != nil {
+		return false, false, fmt.Errorf("check team changes: %w", err)
+	}
+	if changes > 0 {
 		return true, true, nil
 	}
 	tag, err := r.pool.Exec(ctx, `DELETE FROM master_team WHERE id = $1`, id)

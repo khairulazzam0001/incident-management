@@ -109,6 +109,9 @@ export interface Meta {
   sources: MasterItem[];
   applications: MasterIDItem[];
   teams: MasterIDItem[];
+  change_types: MasterItem[];
+  change_risks: MasterItem[];
+  change_statuses: MasterItem[];
 }
 
 export interface PageMeta {
@@ -232,4 +235,121 @@ export interface CreateIncidentInput {
   priority: Priority;
   application_id?: string | null;
   environment?: string | null;
+}
+
+// ===== Change Management (PRD_Change_Management.md) =====
+
+export type ChangeStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "APPROVED"
+  | "SCHEDULED"
+  | "IMPLEMENTING"
+  | "REVIEWING"
+  | "CLOSED"
+  | "REJECTED"
+  | "CANCELLED";
+
+export type ChangeType = "STANDARD" | "NORMAL" | "EMERGENCY";
+export type ChangeRisk = "LOW" | "MEDIUM" | "HIGH";
+export type ApprovalDecision = "APPROVE" | "REJECT" | "REQUEST_CHANGES";
+
+export interface Change {
+  id: string;
+  change_no: string;
+  title: string;
+  description: string;
+  justification: string;
+  type: ChangeType;
+  risk: ChangeRisk;
+  status: ChangeStatus;
+  application_id: string;
+  environment: string;
+  implementation_plan: string;
+  rollback_plan: string;
+  test_plan: string;
+  requester_id: string;
+  implementer_id: string | null;
+  team_id: string | null;
+  revision: number;
+  planned_start: string | null;
+  planned_end: string | null;
+  actual_start: string | null;
+  actual_end: string | null;
+  outcome: "SUCCESS" | "FAILED" | "ROLLED_BACK" | null;
+  outcome_notes: string;
+  review_notes: string;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  closed_by: string | null;
+}
+
+export interface ChangeInput {
+  title: string;
+  description: string;
+  justification: string;
+  type: ChangeType | "";
+  risk: ChangeRisk | "";
+  application_id: string;
+  environment: string;
+  implementation_plan: string;
+  rollback_plan: string;
+  test_plan: string;
+  implementer_id: string | null;
+  team_id: string | null;
+  incident_id?: string | null;
+}
+
+export interface ChangeListResponse {
+  data: Change[];
+  meta: PageMeta;
+}
+
+export interface ChangeApproval {
+  id: string;
+  change_id: string;
+  approver_id: string | null;
+  decision: "APPROVED" | "REJECTED" | "CHANGES_REQUESTED" | "AUTO_APPROVED";
+  reason: string;
+  revision: number;
+  created_at: string;
+}
+
+export interface ChangeActivity {
+  id: string;
+  change_id: string;
+  type: string;
+  actor_id: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  payload: unknown;
+  created_at: string;
+}
+
+export interface ChangeComment {
+  id: string;
+  change_id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface ChangeIncidentLink {
+  id: string;
+  change_id: string;
+  change_no: string;
+  change_title: string;
+  change_status: ChangeStatus;
+  incident_id: string;
+  incident_no: string;
+  incident_title: string;
+  incident_status: IncidentStatus;
+  relation: "FIX_FOR" | "CAUSED_BY";
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface DataList<T> {
+  data: T[];
 }

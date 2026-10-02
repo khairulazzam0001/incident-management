@@ -66,6 +66,21 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/master/teams", HandleCreateTeam(d))
 		r.Delete("/api/master/teams/{id}", HandleDeleteTeam(d))
 		r.Get("/api/incidents/{id}/timeline", HandleTimeline(d))
+		r.Get("/api/incidents/{id}/changes", HandleIncidentChanges(d))
+
+		// Change Management CM-1 (PRD_Change_Management.md §15).
+		r.Get("/api/changes", HandleListChanges(d))
+		r.Post("/api/changes", HandleCreateChange(d))
+		r.Get("/api/changes/{id}", HandleGetChange(d))
+		r.Patch("/api/changes/{id}", HandleUpdateChange(d))
+		r.Post("/api/changes/{id}/submit", HandleSubmitChange(d))
+		r.Post("/api/changes/{id}/approval", HandleDecideChange(d))
+		r.Get("/api/changes/{id}/approvals", HandleChangeApprovals(d))
+		r.Post("/api/changes/{id}/cancel", HandleCancelChange(d))
+		r.Get("/api/changes/{id}/timeline", HandleChangeTimeline(d))
+		r.Post("/api/changes/{id}/comments", HandleAddChangeComment(d))
+		r.Get("/api/changes/{id}/comments", HandleChangeComments(d))
+		r.Get("/api/changes/{id}/incidents", HandleChangeIncidents(d))
 	})
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

@@ -64,4 +64,8 @@ type Meta struct {
 	Sources      []MasterItem   `json:"sources"`
 	Applications []MasterIDItem `json:"applications"`
 	Teams        []MasterIDItem `json:"teams"`
+	// Change Management master (PRD_Change_Management.md §6).
+	ChangeTypes    []MasterItem `json:"change_types"`
+	ChangeRisks    []MasterItem `json:"change_risks"`
+	ChangeStatuses []MasterItem `json:"change_statuses"`
 }

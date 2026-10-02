@@ -2,6 +2,9 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import type { ReactElement } from "react";
 import { useAuth } from "./auth/AuthContext";
 import { AdminLayout } from "./components/AdminLayout";
+import { ChangeDetail } from "./pages/ChangeDetail";
+import { ChangeList } from "./pages/ChangeList";
+import { ChangeNew } from "./pages/ChangeNew";
 import { Dashboard } from "./pages/Dashboard";
 import { IncidentDetail } from "./pages/IncidentDetail";
 import { IncidentList } from "./pages/IncidentList";
@@ -36,6 +39,9 @@ function Shell() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/incidents/new" element={<IncidentNew />} />
           <Route path="/incidents/:id" element={<IncidentDetail />} />
+          <Route path="/changes" element={<ChangeList />} />
+          <Route path="/changes/new" element={<ChangeNew />} />
+          <Route path="/changes/:id" element={<ChangeDetail />} />
         </Routes>
       </>
     </AdminLayout>

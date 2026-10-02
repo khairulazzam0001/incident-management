@@ -617,7 +617,8 @@ func (r *Repository) ListMeta(ctx context.Context) (*model.Meta, error) {
 		Statuses: []model.MasterItem{}, Severities: []model.MasterItem{},
 		Priorities: []model.MasterItem{}, Environments: []model.MasterItem{},
 		Sources: []model.MasterItem{}, Applications: []model.MasterIDItem{},
-		Teams: []model.MasterIDItem{},
+		Teams: []model.MasterIDItem{}, ChangeTypes: []model.MasterItem{},
+		ChangeRisks: []model.MasterItem{}, ChangeStatuses: []model.MasterItem{},
 	}
 	collect := func(query, order string, dest *[]model.MasterItem) error {
 		rows, err := r.pool.Query(ctx, query+` ORDER BY `+order)
@@ -648,6 +649,15 @@ func (r *Repository) ListMeta(ctx context.Context) (*model.Meta, error) {
 	}
 	if err := collect(`SELECT code, name FROM master_incident_source`, "name", &meta.Sources); err != nil {
 		return nil, fmt.Errorf("list sources: %w", err)
+	}
+	if err := collect(`SELECT code, name FROM master_change_type`, "sort_order", &meta.ChangeTypes); err != nil {
+		return nil, fmt.Errorf("list change types: %w", err)
+	}
+	if err := collect(`SELECT code, name FROM master_change_risk`, "sort_order", &meta.ChangeRisks); err != nil {
+		return nil, fmt.Errorf("list change risks: %w", err)
+	}
+	if err := collect(`SELECT code, name FROM master_change_status`, "sort_order", &meta.ChangeStatuses); err != nil {
+		return nil, fmt.Errorf("list change statuses: %w", err)
 	}
 	rows, err := r.pool.Query(ctx, `SELECT id, code, name FROM master_application ORDER BY name`)
 	if err != nil {
