@@ -6,6 +6,7 @@ import { ApiError, api } from "../api/client";
 import type { ApprovalDecision, Change, ChangeInput, ChangeRelation, User } from "../api/types";
 import { canLinkChange, canViewChanges, useAuth } from "../auth/AuthContext";
 import { useMeta, useUsers } from "../hooks/useMeta";
+import { ChangeAttachmentsPanel } from "../components/ChangeAttachmentsPanel";
 import { ChangeForm } from "../components/ChangeForm";
 import { ChangeLifecyclePanel } from "../components/ChangeLifecyclePanel";
 import { ChangeStatusBadge } from "../components/ChangeStatusBadge";
@@ -56,6 +57,8 @@ function activityLabel(type: string, from: string | null, to: string | null, pay
       return `Implementasi selesai: ${payloadField(payload, "outcome")}`;
     case "close":
       return "Change ditutup";
+    case "attachment":
+      return `File diunggah: ${payloadField(payload, "file_name")}`;
     default:
       return type;
   }
@@ -604,6 +607,14 @@ export function ChangeDetail() {
           </form>
         )}
       </div>
+
+      <ChangeAttachmentsPanel
+        change={change}
+        user={user}
+        userById={userById}
+        onDone={done}
+        onError={fail}
+      />
 
       {showCancel && (
         <div className="rounded-lg border border-mist bg-paper p-6">

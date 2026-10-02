@@ -91,6 +91,9 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/changes/{id}/close", HandleCloseChange(d))
 		r.Post("/api/changes/{id}/incidents", HandleLinkIncident(d))
 		r.Delete("/api/changes/{id}/incidents/{incidentId}", HandleUnlinkIncident(d))
+		r.Post("/api/changes/{id}/attachments", HandleUploadChangeAttachment(d))
+		r.Get("/api/changes/{id}/attachments", HandleChangeAttachments(d))
+		r.Get("/api/changes/{id}/attachments/{aid}/download", HandleDownloadChangeAttachment(d))
 	})
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

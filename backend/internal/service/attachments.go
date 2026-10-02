@@ -65,27 +65,50 @@ func (s *IncidentService) checkRead(actor *model.AuthUser, in *model.Incident) *
 	return nil
 }
 
+// validateUpload checks name, size, extension and sniffed content (FR-09)
+// and returns the base file name, extension and detected MIME type.
+func (s *IncidentService) validateUpload(fileName string, content []byte) (name, ext, mime string, verr *Error) {
+	name = strings.TrimSpace(fileName)
+	if name == "" {
+		return "", "", "", BadRequest("VALIDATION_ERROR", "Nama file wajib diisi.", nil)
+	}
+	if int64(len(content)) > s.uploadCfg.MaxBytes {
+		return "", "", "", BadRequest("FILE_TOO_LARGE",
+			fmt.Sprintf("Ukuran maksimal %d MiB.", s.uploadCfg.MaxBytes>>20), nil)
+	}
+	ext = strings.ToLower(filepath.Ext(name))
+	if !allowedExtensions[ext] {
+		return "", "", "", BadRequest("INVALID_FILE_TYPE",
+			"Tipe file tidak diizinkan (png/jpg/gif/webp/pdf/txt/zip).", nil)
+	}
+	mime = http.DetectContentType(content[:min(len(content), 512)])
+	if !mimeAllowed(mime) {
+		return "", "", "", BadRequest("INVALID_FILE_TYPE", "Isi file tidak sesuai tipenya.", nil)
+	}
+	return filepath.Base(name), ext, mime, nil
+}
+
+// storeUpload writes content under the upload dir at rel and returns the
+// absolute path.
+func (s *IncidentService) storeUpload(rel string, content []byte) (string, error) {
+	abs := filepath.Join(s.uploadCfg.Dir, rel)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o750); err != nil {
+		return "", fmt.Errorf("mkdir upload: %w", err)
+	}
+	if err := os.WriteFile(abs, content, 0o600); err != nil {
+		return "", fmt.Errorf("write upload: %w", err)
+	}
+	return abs, nil
+}
+
 // UploadAttachment validates and stores a file (FR-09). PIC or coordinator only.
 func (s *IncidentService) UploadAttachment(ctx context.Context, actor *model.AuthUser, incidentID, fileName string, content []byte) (*model.Attachment, error) {
 	if err := requireIncidentID(incidentID); err != nil {
 		return nil, err
 	}
-	fileName = strings.TrimSpace(fileName)
-	if fileName == "" {
-		return nil, BadRequest("VALIDATION_ERROR", "Nama file wajib diisi.", nil)
-	}
-	if int64(len(content)) > s.uploadCfg.MaxBytes {
-		return nil, BadRequest("FILE_TOO_LARGE",
-			fmt.Sprintf("Ukuran maksimal %d MiB.", s.uploadCfg.MaxBytes>>20), nil)
-	}
-	ext := strings.ToLower(filepath.Ext(fileName))
-	if !allowedExtensions[ext] {
-		return nil, BadRequest("INVALID_FILE_TYPE",
-			"Tipe file tidak diizinkan (png/jpg/gif/webp/pdf/txt/zip).", nil)
-	}
-	sniffLen := min(len(content), 512)
-	if !mimeAllowed(http.DetectContentType(content[:sniffLen])) {
-		return nil, BadRequest("INVALID_FILE_TYPE", "Isi file tidak sesuai tipenya.", nil)
+	name, ext, mime, verr := s.validateUpload(fileName, content)
+	if verr != nil {
+		return nil, verr
 	}
 	cur, err := s.repo.GetIncident(ctx, incidentID)
 	if err != nil {
@@ -97,16 +120,12 @@ func (s *IncidentService) UploadAttachment(ctx context.Context, actor *model.Aut
 	if !canActOn(actor, cur) {
 		return nil, Forbidden("FORBIDDEN_ACTION", "Hanya PIC atau koordinator yang boleh mengunggah file.")
 	}
-	key := uuid.NewString() + ext
-	rel := filepath.Join(incidentID, key)
-	abs := filepath.Join(s.uploadCfg.Dir, rel)
-	if err := os.MkdirAll(filepath.Dir(abs), 0o750); err != nil {
-		return nil, fmt.Errorf("mkdir upload: %w", err)
+	rel := filepath.Join(incidentID, uuid.NewString()+ext)
+	abs, err := s.storeUpload(rel, content)
+	if err != nil {
+		return nil, err
 	}
-	if err := os.WriteFile(abs, content, 0o600); err != nil {
-		return nil, fmt.Errorf("write upload: %w", err)
-	}
-	a, err := s.repo.CreateAttachment(ctx, incidentID, filepath.Base(fileName), rel, http.DetectContentType(content[:sniffLen]), int64(len(content)), actor.ID)
+	a, err := s.repo.CreateAttachment(ctx, incidentID, name, rel, mime, int64(len(content)), actor.ID)
 	if err != nil {
 		_ = os.Remove(abs)
 		return nil, fmt.Errorf("create attachment: %w", err)
