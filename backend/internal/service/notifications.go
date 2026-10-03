@@ -10,13 +10,30 @@ import (
 	"github.com/khairulazzam0001/incident-management/backend/internal/repository"
 )
 
-// fanout stores one in-app notification per recipient and enqueues email
-// delivery. It never fails the triggering action: errors are only logged.
-func (s *IncidentService) fanout(ctx context.Context, in *model.Incident, actor *model.AuthUser, ntype string) {
-	recipients, err := s.resolveRecipients(ctx, in, actor, ntype)
-	if err != nil {
-		s.log.Warn("notifikasi: gagal resolve penerima", "error", err, "type", ntype)
-		return
+// delivery is one notification event for a set of recipients. Exactly one of
+// incidentID / changeID is the subject; actorID nil means the system.
+type delivery struct {
+	incidentID *string
+	changeID   *string
+	ntype      string
+	actorID    *string
+	recipients []string
+	payload    string
+	subject    string
+	body       string
+}
+
+// deliver stores one in-app notification per (deduplicated) recipient and
+// enqueues email. It never fails the triggering action: errors are logged.
+func (s *IncidentService) deliver(ctx context.Context, d delivery) {
+	seen := map[string]bool{}
+	recipients := []string{}
+	for _, id := range d.recipients {
+		if id == "" || seen[id] || (d.actorID != nil && id == *d.actorID) {
+			continue
+		}
+		seen[id] = true
+		recipients = append(recipients, id)
 	}
 	if len(recipients) == 0 {
 		return
@@ -28,17 +45,13 @@ func (s *IncidentService) fanout(ctx context.Context, in *model.Incident, actor 
 	rows := make([]repository.NotificationInput, 0, len(recipients))
 	for _, rid := range recipients {
 		rows = append(rows, repository.NotificationInput{
-			IncidentID:  &in.ID,
-			Type:        ntype,
-			RecipientID: rid,
-			ActorID:     &actor.ID,
-			EmailStatus: emailStatus,
-			Payload:     fmt.Sprintf(`{"incident_no":%q,"title":%q,"status":%q}`, in.IncidentNo, in.Title, in.Status),
+			IncidentID: d.incidentID, ChangeID: d.changeID, Type: d.ntype, RecipientID: rid,
+			ActorID: d.actorID, EmailStatus: emailStatus, Payload: d.payload,
 		})
 	}
 	ids, err := s.repo.CreateNotifications(ctx, rows)
 	if err != nil {
-		s.log.Warn("notifikasi: gagal simpan", "error", err, "type", ntype)
+		s.log.Warn("notifikasi: gagal simpan", "error", err, "type", d.ntype)
 		return
 	}
 	if !s.mailer.Enabled() {
@@ -49,14 +62,26 @@ func (s *IncidentService) fanout(ctx context.Context, in *model.Incident, actor 
 		s.log.Warn("notifikasi: gagal ambil email", "error", err)
 		return
 	}
-	subject, body := mailContent(ntype, in)
 	for i, rid := range recipients {
-		to, ok := emails[rid]
-		if !ok || to == "" || i >= len(ids) {
-			continue
+		if to, ok := emails[rid]; ok && to != "" && i < len(ids) {
+			s.mailer.Enqueue(ids[i], to, d.subject, d.body)
 		}
-		s.mailer.Enqueue(ids[i], to, subject, body)
 	}
+}
+
+// fanout notifies an incident event (PRD §13).
+func (s *IncidentService) fanout(ctx context.Context, in *model.Incident, actor *model.AuthUser, ntype string) {
+	recipients, err := s.resolveRecipients(ctx, in, actor, ntype)
+	if err != nil {
+		s.log.Warn("notifikasi: gagal resolve penerima", "error", err, "type", ntype)
+		return
+	}
+	subject, body := mailContent(ntype, in)
+	s.deliver(ctx, delivery{
+		incidentID: &in.ID, ntype: ntype, actorID: &actor.ID, recipients: recipients,
+		payload: fmt.Sprintf(`{"incident_no":%q,"title":%q,"status":%q}`, in.IncidentNo, in.Title, in.Status),
+		subject: subject, body: body,
+	})
 }
 
 func (s *IncidentService) resolveRecipients(ctx context.Context, in *model.Incident, actor *model.AuthUser, ntype string) ([]string, error) {

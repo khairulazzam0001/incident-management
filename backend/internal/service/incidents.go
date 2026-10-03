@@ -13,6 +13,7 @@ import (
 	"github.com/khairulazzam0001/incident-management/backend/internal/model"
 	"github.com/khairulazzam0001/incident-management/backend/internal/notify"
 	"github.com/khairulazzam0001/incident-management/backend/internal/repository"
+	"github.com/khairulazzam0001/incident-management/backend/internal/sla"
 )
 
 // IncidentService implements US-01–US-06 workflow rules (PRD §8) on top of queries.
@@ -92,11 +93,18 @@ func (s *IncidentService) Create(ctx context.Context, actor *model.AuthUser, in 
 	if err != nil {
 		return nil, fmt.Errorf("generate incident_no: %w", err)
 	}
-	created, err := s.repo.CreateIncident(ctx, in, no, actor.ID)
+	slaRows, err := s.planSLA(ctx, in.Priority, time.Now().UTC(), sla.MetricResponse, sla.MetricResolution)
+	if err != nil {
+		return nil, err
+	}
+	created, err := s.repo.CreateIncident(ctx, in, no, actor.ID, slaRows)
 	if err != nil {
 		return nil, fmt.Errorf("create incident: %w", err)
 	}
 	s.fanout(ctx, created, actor, model.NotifCreated)
+	if err := s.attachSLA(ctx, created); err != nil {
+		return nil, err
+	}
 	return created, nil
 }
 
@@ -117,6 +125,9 @@ func (s *IncidentService) List(ctx context.Context, actor *model.AuthUser, f rep
 	if f.AssigneeID == "me" {
 		f.AssigneeID = actor.ID
 	}
+	if f.SLA != "" && f.SLA != "at_risk" && f.SLA != "breached" {
+		return nil, 0, BadRequest("VALIDATION_ERROR", "Filter sla harus at_risk atau breached.", map[string]string{"field": "sla"})
+	}
 	for field, id := range map[string]string{
 		"application_id": f.ApplicationID, "team_id": f.TeamID, "assignee": f.AssigneeID,
 	} {
@@ -136,6 +147,9 @@ func (s *IncidentService) List(ctx context.Context, actor *model.AuthUser, f rep
 	if err != nil {
 		return nil, 0, fmt.Errorf("list incidents: %w", err)
 	}
+	if err := s.attachSLA(ctx, items...); err != nil {
+		return nil, 0, fmt.Errorf("attach sla: %w", err)
+	}
 	return items, total, nil
 }
 
@@ -153,6 +167,9 @@ func (s *IncidentService) Get(ctx context.Context, actor *model.AuthUser, id str
 	}
 	if err := s.checkRead(actor, in); err != nil {
 		return nil, err
+	}
+	if err := s.attachSLA(ctx, in); err != nil {
+		return nil, fmt.Errorf("attach sla: %w", err)
 	}
 	return in, nil
 }

@@ -69,6 +69,16 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/incidents/{id}/changes", HandleIncidentChanges(d))
 		r.Get("/api/incidents/{id}/recent-changes", HandleRecentChanges(d))
 
+		// SLA & Escalation (PRD_SLA_Escalation.md §10).
+		r.Get("/api/incidents/{id}/sla", HandleIncidentSLA(d))
+		r.Get("/api/dashboard/sla", HandleSLADashboard(d))
+		r.Get("/api/master/sla-policies", HandleSLASettings(d))
+		r.Put("/api/master/sla-policies/{priority}", HandleUpdateSLAPolicy(d))
+		r.Put("/api/master/business-hours/{calendar}", HandleUpdateBusinessHours(d))
+		r.Get("/api/master/holidays", HandleHolidays(d))
+		r.Post("/api/master/holidays", HandleCreateHoliday(d))
+		r.Delete("/api/master/holidays/{id}", HandleDeleteHoliday(d))
+
 		// Change Management CM-1 (PRD_Change_Management.md §15).
 		r.Get("/api/changes", HandleListChanges(d))
 		r.Get("/api/changes/summary", HandleChangeSummary(d))

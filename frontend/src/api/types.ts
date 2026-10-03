@@ -69,6 +69,109 @@ export interface Incident {
   resolved_at: string | null;
   closed_at: string | null;
   closed_by: string | null;
+  // Ringkasan SLA (list/detail); null bila incident dibuat sebelum SLA aktif.
+  sla?: SLASummary | null;
+}
+
+// ===== SLA & Escalation (PRD_SLA_Escalation.md) =====
+
+export type SLAStatus = "RUNNING" | "MET" | "BREACHED" | "CANCELLED";
+export type SLAMetric = "RESPONSE" | "RESOLUTION";
+
+export interface SLAState {
+  status: SLAStatus;
+  cycle: number;
+  warn_at: string;
+  target_at: string;
+  stopped_at: string | null;
+}
+
+export interface SLASummary {
+  response: SLAState | null;
+  resolution: SLAState | null;
+}
+
+export interface IncidentSLA {
+  id: string;
+  incident_id: string;
+  metric: SLAMetric;
+  cycle: number;
+  status: SLAStatus;
+  priority: string;
+  target_minutes: number;
+  calendar_code: string;
+  warn_percent: number;
+  reminder_minutes: number | null;
+  started_at: string;
+  warn_at: string;
+  target_at: string;
+  warned_at: string | null;
+  breached_at: string | null;
+  reminded_at: string | null;
+  stopped_at: string | null;
+}
+
+export interface SLAPolicy {
+  priority: string;
+  response_minutes: number;
+  resolution_minutes: number;
+  calendar_code: string;
+  warn_percent: number;
+  breach_reminder_minutes: number | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface BusinessHours {
+  weekday: number;
+  start_minute: number;
+  end_minute: number;
+}
+
+export interface BusinessCalendar {
+  code: string;
+  name: string;
+  timezone: string;
+  is_24x7: boolean;
+  hours: BusinessHours[];
+}
+
+export interface SLASettings {
+  policies: SLAPolicy[];
+  calendars: BusinessCalendar[];
+}
+
+export interface Holiday {
+  id: string;
+  calendar_code: string;
+  date: string;
+  name: string;
+}
+
+export interface SLABucket {
+  priority: string;
+  metric: SLAMetric;
+  total: number;
+  met: number;
+  breached: number;
+  running: number;
+  compliance: number | null;
+  avg_minutes: number | null;
+}
+
+export interface SLADashboard {
+  from: string;
+  to: string;
+  buckets: SLABucket[];
+  active_breaches: {
+    incident_id: string;
+    incident_no: string;
+    title: string;
+    priority: string;
+    metric: SLAMetric;
+    target_at: string;
+  }[];
+  worker_last_tick_at: string | null;
 }
 
 export interface Comment {

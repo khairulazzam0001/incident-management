@@ -57,6 +57,9 @@ type Incident struct {
 	ResolvedAt    *time.Time `json:"resolved_at"`
 	ClosedAt      *time.Time `json:"closed_at"`
 	ClosedBy      *string    `json:"closed_by"`
+	// SLA is filled on list/detail responses; nil when the incident predates
+	// SLA (PRD_SLA_Escalation.md §6.3).
+	SLA *SLASummary `json:"sla"`
 }
 
 // CreateIncidentInput is the payload for POST /api/incidents.

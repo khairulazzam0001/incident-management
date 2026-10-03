@@ -4,7 +4,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds runtime configuration for the API server.
@@ -14,6 +16,9 @@ type Config struct {
 	JWTSecret          string
 	CORSAllowedOrigins []string
 	UploadDir          string
+	// SLATick is the SLA worker interval (SLA_TICK_SECONDS, default 60);
+	// 0 disables the worker (SLA_WORKER_DISABLED=true).
+	SLATick time.Duration
 }
 
 // Load reads configuration from the environment and fails fast on missing values.
@@ -37,6 +42,17 @@ func Load() (Config, error) {
 	}
 	if cfg.UploadDir == "" {
 		cfg.UploadDir = "./uploads"
+	}
+	cfg.SLATick = time.Minute
+	if v := strings.TrimSpace(os.Getenv("SLA_TICK_SECONDS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 5 {
+			return Config{}, fmt.Errorf("SLA_TICK_SECONDS harus angka >= 5")
+		}
+		cfg.SLATick = time.Duration(n) * time.Second
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("SLA_WORKER_DISABLED")), "true") {
+		cfg.SLATick = 0
 	}
 	origins := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	if origins == "" {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/khairulazzam0001/incident-management/backend/internal/model"
-	"github.com/khairulazzam0001/incident-management/backend/internal/repository"
 )
 
 // changeFanout stores change notifications (PRD_Change_Management.md §13)
@@ -18,45 +17,13 @@ func (s *IncidentService) changeFanout(ctx context.Context, c *model.Change, act
 		s.log.Warn("notifikasi change: gagal resolve penerima", "error", err, "type", ntype)
 		return
 	}
-	if len(recipients) == 0 {
-		return
-	}
-	emailStatus := model.EmailSkipped
-	if s.mailer.Enabled() {
-		emailStatus = model.EmailPending
-	}
-	rows := make([]repository.NotificationInput, 0, len(recipients))
-	for _, rid := range recipients {
-		rows = append(rows, repository.NotificationInput{
-			ChangeID:    &c.ID,
-			Type:        ntype,
-			RecipientID: rid,
-			ActorID:     &actor.ID,
-			EmailStatus: emailStatus,
-			Payload:     fmt.Sprintf(`{"change_no":%q,"title":%q,"status":%q}`, c.ChangeNo, c.Title, c.Status),
-		})
-	}
-	ids, err := s.repo.CreateNotifications(ctx, rows)
-	if err != nil {
-		s.log.Warn("notifikasi change: gagal simpan", "error", err, "type", ntype)
-		return
-	}
-	if !s.mailer.Enabled() {
-		return
-	}
-	emails, err := s.repo.EmailsByIDs(ctx, recipients)
-	if err != nil {
-		s.log.Warn("notifikasi change: gagal ambil email", "error", err)
-		return
-	}
-	subject := fmt.Sprintf("[%s] %s: %s", ntype, c.ChangeNo, c.Title)
-	body := fmt.Sprintf("Change %s\n%s\nStatus: %s\nType: %s, Risk: %s\nWaktu: %s",
-		c.ChangeNo, c.Title, c.Status, c.Type, c.Risk, time.Now().Format("2006-01-02 15:04:05"))
-	for i, rid := range recipients {
-		if to, ok := emails[rid]; ok && to != "" && i < len(ids) {
-			s.mailer.Enqueue(ids[i], to, subject, body)
-		}
-	}
+	s.deliver(ctx, delivery{
+		changeID: &c.ID, ntype: ntype, actorID: &actor.ID, recipients: recipients,
+		payload: fmt.Sprintf(`{"change_no":%q,"title":%q,"status":%q}`, c.ChangeNo, c.Title, c.Status),
+		subject: fmt.Sprintf("[%s] %s: %s", ntype, c.ChangeNo, c.Title),
+		body: fmt.Sprintf("Change %s\n%s\nStatus: %s\nType: %s, Risk: %s\nWaktu: %s",
+			c.ChangeNo, c.Title, c.Status, c.Type, c.Risk, time.Now().Format("2006-01-02 15:04:05")),
+	})
 }
 
 func (s *IncidentService) changeRecipients(ctx context.Context, c *model.Change, actor *model.AuthUser, ntype string) ([]string, error) {

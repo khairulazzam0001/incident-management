@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import { useMeta } from "../hooks/useMeta";
 import { PriorityBadge } from "../components/PriorityBadge";
 import { SeverityBadge } from "../components/SeverityBadge";
+import { SlaBadge } from "../components/SlaBadge";
 import { StatusBadge } from "../components/StatusBadge";
 
 const PAGE_SIZE = 20;
@@ -21,13 +22,14 @@ export function IncidentList() {
   const [application, setApplication] = useState("");
   const [team, setTeam] = useState("");
   const [mineOnly, setMineOnly] = useState(false);
+  const [slaFilter, setSlaFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
 
   const meta = useMeta();
   const incidents = useQuery({
-    queryKey: ["incidents", status, severity, priority, application, team, mineOnly, q, page],
+    queryKey: ["incidents", status, severity, priority, application, team, mineOnly, slaFilter, q, page],
     queryFn: ({ signal }) =>
       api.listIncidents({
         status: status || undefined,
@@ -36,6 +38,7 @@ export function IncidentList() {
         application: application || undefined,
         team: team || undefined,
         assignee: mineOnly ? "me" : undefined,
+        sla: slaFilter || undefined,
         q: q || undefined,
         page,
         limit: PAGE_SIZE,
@@ -149,6 +152,19 @@ export function IncidentList() {
             </option>
           ))}
         </select>
+        <select
+          value={slaFilter}
+          onChange={(e) => {
+            setSlaFilter(e.target.value);
+            resetPage();
+          }}
+          className={selectClass()}
+          aria-label="Filter SLA"
+        >
+          <option value="">Semua SLA</option>
+          <option value="at_risk">Hampir breach</option>
+          <option value="breached">Breach</option>
+        </select>
         <label className="flex items-center gap-1 text-sm">
           <input
             type="checkbox"
@@ -217,6 +233,7 @@ export function IncidentList() {
                       <StatusBadge status={in_.status} />
                       <SeverityBadge severity={in_.severity} />
                       <PriorityBadge priority={in_.priority} />
+                      <SlaBadge sla={in_.sla ?? null} />
                     </div>
                     <p className="mt-1 font-medium">{in_.title}</p>
                   </Link>
