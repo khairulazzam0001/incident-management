@@ -5,7 +5,13 @@ import { Link, useParams } from "react-router-dom";
 import { ALLOWED_TRANSITIONS } from "../api/types";
 import type { IncidentStatus } from "../api/types";
 import { ApiError, api } from "../api/client";
-import { canCreateChange, canViewChanges, isCoordinator, useAuth } from "../auth/AuthContext";
+import {
+  canCreateChange,
+  canLinkChange,
+  canViewChanges,
+  isCoordinator,
+  useAuth,
+} from "../auth/AuthContext";
 import { useMeta, useUsers } from "../hooks/useMeta";
 import { PriorityBadge } from "../components/PriorityBadge";
 import { SeverityBadge } from "../components/SeverityBadge";
@@ -37,7 +43,7 @@ function activityLabel(type: string, from: string | null, to: string | null): st
     case "reopen":
       return "Incident dibuka kembali";
     case "change_link":
-      return "Ditautkan ke change request";
+      return "Link change request diubah";
     default:
       return type;
   }
@@ -66,6 +72,7 @@ export function IncidentDetail() {
   const [verifyReason, setVerifyReason] = useState("");
   const [reopenReason, setReopenReason] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [causeNo, setCauseNo] = useState("");
 
   const incidentQuery = useQuery({
     queryKey: ["incident", incidentId],
@@ -101,6 +108,11 @@ export function IncidentDetail() {
   const changesQuery = useQuery({
     queryKey: ["incident-changes", incidentId],
     queryFn: ({ signal }) => api.getIncidentChanges(incidentId, signal),
+    enabled: incidentId !== "" && showChanges,
+  });
+  const recentChangesQuery = useQuery({
+    queryKey: ["incident-recent-changes", incidentId],
+    queryFn: ({ signal }) => api.getRecentChanges(incidentId, signal),
     enabled: incidentId !== "" && showChanges,
   });
   const attachmentsQuery = useQuery({
@@ -214,6 +226,27 @@ export function IncidentDetail() {
       done("Incident dibuka kembali (INVESTIGATING).");
     },
     onError: fail,
+  });
+  const causeMutation = useMutation({
+    mutationFn: async () => {
+      const no = causeNo.trim().toUpperCase();
+      const found = await api.listChanges({ q: no, limit: 10 });
+      const change = found.data.find((c) => c.change_no === no);
+      if (change === undefined) throw new Error(`Change ${no} tidak ditemukan.`);
+      return api.linkIncident(change.id, incidentId, "CAUSED_BY");
+    },
+    onSuccess: () => {
+      setCauseNo("");
+      done("Change penyebab ditautkan.");
+    },
+    onError: (err: unknown) => {
+      if (err instanceof Error && !(err instanceof ApiError)) {
+        setSuccess(null);
+        setActionError(err.message);
+        return;
+      }
+      fail(err);
+    },
   });
   const uploadMutation = useMutation({
     mutationFn: (file: File) => api.uploadAttachment(incidentId, file),
@@ -355,6 +388,27 @@ export function IncidentDetail() {
     incident.status === "VERIFYING";
   const inputClass =
     "mt-1 w-full rounded border border-mist bg-paper px-3 py-2 text-sm focus:border-iris focus:outline-none";
+  // Gate production (PRD_Change_Management.md §8.2, Q3) — backend yang menegakkan.
+  const needsChange =
+    showChanges &&
+    incident.environment === "production" &&
+    incident.status === "FIXING" &&
+    !(changesQuery.data?.data ?? []).some(
+      (l) =>
+        l.relation === "FIX_FOR" &&
+        (l.change_status === "IMPLEMENTING" ||
+          l.change_status === "REVIEWING" ||
+          l.change_status === "CLOSED"),
+    );
+
+  function submitCause(e: FormEvent) {
+    e.preventDefault();
+    if (causeNo.trim() === "") {
+      setActionError("Isi nomor change (cth CHG-2026-000001).");
+      return;
+    }
+    causeMutation.mutate();
+  }
 
   return (
     <section className="w-full space-y-6 p-6">
@@ -410,6 +464,12 @@ export function IncidentDetail() {
 
       <div className="rounded-lg border border-mist bg-paper p-6">
         <h2 className="font-semibold">Ubah Status</h2>
+        {needsChange && (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Incident production butuh change request FIX_FOR yang sudah mulai diimplementasikan
+            sebelum bisa pindah ke VERIFYING.
+          </p>
+        )}
         {allowed.length === 0 ? (
           <p className="mt-2 text-sm text-veil">
             Status terminal — hanya bisa via reopen khusus.
@@ -702,6 +762,44 @@ export function IncidentDetail() {
               <li className="text-veil">Belum ada change request terkait.</li>
             )}
           </ul>
+          {(recentChangesQuery.data?.data ?? []).length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-xs font-semibold uppercase text-veil">
+                Change terbaru di aplikasi & environment ini (72 jam)
+              </h3>
+              <ul className="mt-2 space-y-2 text-sm">
+                {(recentChangesQuery.data?.data ?? []).map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-chalk p-3">
+                    <Link to={`/changes/${c.id}`} className="font-mono text-xs text-iris hover:underline">
+                      {c.change_no}
+                    </Link>
+                    <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                    <ChangeStatusBadge status={c.status} />
+                    <span className="text-xs text-veil">
+                      mulai {formatTime(c.actual_start)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {user !== null && canLinkChange(user.role) && (
+            <form onSubmit={submitCause} className="mt-3 flex flex-wrap gap-2">
+              <input
+                value={causeNo}
+                onChange={(e) => setCauseNo(e.target.value)}
+                placeholder="Change penyebab, cth CHG-2026-000001"
+                className="min-w-52 flex-1 rounded border border-mist bg-paper px-3 py-2 text-sm focus:border-iris focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={causeMutation.isPending}
+                className="rounded-full border border-mist px-4 py-2 text-sm font-semibold text-deep hover:bg-lilac disabled:opacity-50"
+              >
+                {causeMutation.isPending ? "…" : "Tautkan sebagai Penyebab"}
+              </button>
+            </form>
+          )}
         </div>
       )}
 

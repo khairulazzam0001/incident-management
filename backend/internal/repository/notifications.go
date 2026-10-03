@@ -9,7 +9,8 @@ import (
 
 // NotificationInput is one recipient row for an event.
 type NotificationInput struct {
-	IncidentID  string
+	IncidentID  *string
+	ChangeID    *string
 	Type        string
 	RecipientID string
 	ActorID     *string
@@ -31,9 +32,9 @@ func (r *Repository) CreateNotifications(ctx context.Context, rows []Notificatio
 	for _, n := range rows {
 		var id string
 		err := tx.QueryRow(ctx, `
-			INSERT INTO trans_notification (incident_id, type, recipient_id, actor_id, email_status, payload)
-			VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING id`,
-			n.IncidentID, n.Type, n.RecipientID, n.ActorID, n.EmailStatus, n.Payload).Scan(&id)
+			INSERT INTO trans_notification (incident_id, change_id, type, recipient_id, actor_id, email_status, payload)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING id`,
+			n.IncidentID, n.ChangeID, n.Type, n.RecipientID, n.ActorID, n.EmailStatus, n.Payload).Scan(&id)
 		if err != nil {
 			return nil, fmt.Errorf("insert notification: %w", err)
 		}
@@ -51,7 +52,7 @@ func (r *Repository) ListNotifications(ctx context.Context, recipientID string, 
 		limit = 20
 	}
 	query := `
-		SELECT id, incident_id, type, recipient_id, actor_id,
+		SELECT id, incident_id, change_id, type, recipient_id, actor_id,
 			TO_CHAR(read_at, 'YYYY-MM-DD"T"HH24:MI:SSOF"TZ"'), email_status,
 			TO_CHAR(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF"TZ"')
 		FROM trans_notification WHERE recipient_id = $1`
@@ -69,7 +70,7 @@ func (r *Repository) ListNotifications(ctx context.Context, recipientID string, 
 	items := []*model.Notification{}
 	for rows.Next() {
 		n := &model.Notification{}
-		if err := rows.Scan(&n.ID, &n.IncidentID, &n.Type, &n.RecipientID, &n.ActorID,
+		if err := rows.Scan(&n.ID, &n.IncidentID, &n.ChangeID, &n.Type, &n.RecipientID, &n.ActorID,
 			&n.ReadAt, &n.EmailStatus, &n.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan notification: %w", err)
 		}
@@ -139,6 +140,25 @@ func (r *Repository) CoordinatorIDs(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("iterate coordinators: %w", err)
 	}
 	return ids, nil
+}
+
+// ActiveUserIDsByRole returns active user ids having one of the roles.
+func (r *Repository) ActiveUserIDsByRole(ctx context.Context, roles ...string) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id FROM master_user WHERE is_active = TRUE AND role = ANY($1)`, roles)
+	if err != nil {
+		return nil, fmt.Errorf("user ids by role: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan user id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // EmailsByIDs returns id → email for the given users.

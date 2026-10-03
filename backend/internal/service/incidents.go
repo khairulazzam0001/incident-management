@@ -189,6 +189,9 @@ func (s *IncidentService) ChangeStatus(ctx context.Context, actor *model.AuthUse
 	if !canActOn(actor, in) {
 		return nil, Forbidden("FORBIDDEN_TRANSITION", "Hanya PIC atau koordinator yang boleh mengubah status.")
 	}
+	if err := s.requireProductionFix(ctx, in, to); err != nil {
+		return nil, err
+	}
 	updated, err := s.repo.UpdateStatus(ctx, id, in.Status, to, actor.ID)
 	if err != nil {
 		return nil, fmt.Errorf("update status: %w", err)
