@@ -127,8 +127,10 @@ type ChangeFilter struct {
 	ScheduledFrom string
 	ScheduledTo   string
 	Q             string
-	Page          int
-	Limit         int
+	// Sort "planned_start" orders by schedule (calendar); default newest first.
+	Sort  string
+	Page  int
+	Limit int
 }
 
 // ListChanges returns a page (newest first) plus the total count.
@@ -186,10 +188,14 @@ func (r *Repository) ListChanges(ctx context.Context, f ChangeFilter) ([]*model.
 	if page <= 0 {
 		page = 1
 	}
+	order := "created_at DESC, id DESC"
+	if f.Sort == "planned_start" {
+		order = "planned_start ASC NULLS LAST, id ASC"
+	}
 	args = append(args, limit, (page-1)*limit)
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(`SELECT %s FROM trans_change
-		WHERE %s ORDER BY created_at DESC, id DESC LIMIT $%d OFFSET $%d`,
-		changeColumns, where, len(args)-1, len(args)), args...)
+		WHERE %s ORDER BY %s LIMIT $%d OFFSET $%d`,
+		changeColumns, where, order, len(args)-1, len(args)), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list changes: %w", err)
 	}
@@ -457,4 +463,126 @@ func (r *Repository) ListChangeLinks(ctx context.Context, changeID, incidentID s
 		return nil, fmt.Errorf("iterate change links: %w", err)
 	}
 	return items, nil
+}
+
+// ErrDuplicateLink means the change ↔ incident pair already has that relation.
+var ErrDuplicateLink = errors.New("change link already exists")
+
+// FindScheduleConflicts returns other SCHEDULED/IMPLEMENTING changes on the
+// same application + environment whose planned window overlaps [start, end).
+func (r *Repository) FindScheduleConflicts(ctx context.Context, c *model.Change, start, end time.Time) ([]*model.Change, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+changeColumns+` FROM trans_change
+		WHERE id <> $1 AND application_id = $2 AND environment_code = $3
+			AND status_code IN ('SCHEDULED','IMPLEMENTING')
+			AND planned_start IS NOT NULL AND planned_end IS NOT NULL
+			AND planned_start < $5 AND planned_end > $4
+		ORDER BY planned_start`, c.ID, c.ApplicationID, c.Environment, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("find schedule conflicts: %w", err)
+	}
+	defer rows.Close()
+	items := []*model.Change{}
+	for rows.Next() {
+		other, err := scanChange(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan conflict: %w", err)
+		}
+		items = append(items, other)
+	}
+	return items, rows.Err()
+}
+
+// LinkChangeIncident adds a link recorded on both timelines. Returns
+// ErrDuplicateLink when the relation already exists.
+func (r *Repository) LinkChangeIncident(ctx context.Context, c *model.Change, in *model.Incident, relation, actorID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := insertLink(ctx, tx, c, in, relation, actorID); err != nil {
+		if IsUniqueViolation(err) {
+			return ErrDuplicateLink
+		}
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+// UnlinkChangeIncident removes a link recorded on both timelines. Returns
+// pgx.ErrNoRows when the link does not exist.
+func (r *Repository) UnlinkChangeIncident(ctx context.Context, c *model.Change, in *model.Incident, relation, actorID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
+		DELETE FROM trans_change_incident WHERE change_id = $1 AND incident_id = $2 AND relation = $3`,
+		c.ID, in.ID, relation)
+	if err != nil {
+		return fmt.Errorf("delete change link: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO trans_change_activity (change_id, type, actor_id, payload)
+		VALUES ($1,'incident_link',$2,jsonb_build_object(
+			'action','unlink','incident_id',$3::text,'incident_no',$4::text,'relation',$5::text))`,
+		c.ID, actorID, in.ID, in.IncidentNo, relation); err != nil {
+		return fmt.Errorf("insert change unlink activity: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO trans_incident_activity (incident_id, type, actor_id, payload, created_at)
+		VALUES ($1,'change_link',$2,jsonb_build_object(
+			'action','unlink','change_id',$3::text,'change_no',$4::text,'relation',$5::text),
+			clock_timestamp())`,
+		in.ID, actorID, c.ID, c.ChangeNo, relation); err != nil {
+		return fmt.Errorf("insert incident unlink activity: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+// HasImplementedFix reports whether the incident has a FIX_FOR change whose
+// implementation started and did not fail/roll back (production gate §8.2, Q3).
+func (r *Repository) HasImplementedFix(ctx context.Context, incidentID string) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM trans_change_incident l
+			JOIN trans_change c ON c.id = l.change_id
+			WHERE l.incident_id = $1 AND l.relation = 'FIX_FOR'
+				AND c.status_code IN ('IMPLEMENTING','REVIEWING','CLOSED')
+				AND (c.outcome IS NULL OR c.outcome = 'SUCCESS'))`, incidentID).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("check implemented fix: %w", err)
+	}
+	return ok, nil
+}
+
+// FixForPICs returns current PICs of incidents linked FIX_FOR to a change.
+func (r *Repository) FixForPICs(ctx context.Context, changeID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT DISTINCT i.current_pic_id FROM trans_change_incident l
+		JOIN trans_incident i ON i.id = l.incident_id
+		WHERE l.change_id = $1 AND l.relation = 'FIX_FOR' AND i.current_pic_id IS NOT NULL`, changeID)
+	if err != nil {
+		return nil, fmt.Errorf("fix-for pics: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan pic: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }

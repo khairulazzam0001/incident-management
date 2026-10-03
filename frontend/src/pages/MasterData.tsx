@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useMeta } from "../hooks/useMeta";
+import { SlaSettings } from "../components/SlaSettings";
 
 export function MasterData() {
   const { user } = useAuth();
@@ -200,6 +201,8 @@ export function MasterData() {
           </p>
         )}
       </div>
+
+      <SlaSettings canEdit={isManager} />
     </section>
   );
 }

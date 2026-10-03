@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { NamedCount } from "../api/types";
+import { canViewChanges, useAuth } from "../auth/AuthContext";
+import { ChangeSummaryPanel } from "../components/ChangeSummaryPanel";
+import { SlaDashboardPanel } from "../components/SlaDashboardPanel";
 
 function fmtHours(v: number | null): string {
   if (v === null || !Number.isFinite(v)) return "—";
@@ -61,6 +64,7 @@ function Card({ label, value }: { label: string; value: string }) {
 }
 
 export function Dashboard() {
+  const { user } = useAuth();
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: ({ signal }) => api.getDashboard(signal),
@@ -115,6 +119,8 @@ export function Dashboard() {
         <NamedList title="Open per aplikasi" items={d.by_application} />
         <NamedList title="Open per team" items={d.by_team} />
       </div>
+      {user !== null && user.role !== "User" && <SlaDashboardPanel />}
+      {user !== null && canViewChanges(user.role) && <ChangeSummaryPanel />}
     </section>
   );
 }

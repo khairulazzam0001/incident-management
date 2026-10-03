@@ -134,7 +134,15 @@ export function ChangeList() {
     <section className="w-full p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Change Requests</h1>
-        {createButton}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/changes/calendar"
+            className="rounded-full border border-mist px-4 py-2 text-sm font-semibold text-deep hover:bg-lilac"
+          >
+            Kalender
+          </Link>
+          {createButton}
+        </div>
       </div>
 
       <form onSubmit={applySearch} className="mt-4 flex flex-wrap gap-2">

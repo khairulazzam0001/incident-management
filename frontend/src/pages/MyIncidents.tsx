@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { PriorityBadge } from "../components/PriorityBadge";
 import { SeverityBadge } from "../components/SeverityBadge";
+import { SlaBadge } from "../components/SlaBadge";
 import { StatusBadge } from "../components/StatusBadge";
 
 const PAGE_SIZE = 20;
@@ -62,6 +63,7 @@ export function MyIncidents() {
                       <StatusBadge status={in_.status} />
                       <SeverityBadge severity={in_.severity} />
                       <PriorityBadge priority={in_.priority} />
+                      <SlaBadge sla={in_.sla ?? null} />
                     </div>
                     <p className="mt-1 font-medium">{in_.title}</p>
                   </Link>

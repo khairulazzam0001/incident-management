@@ -11,6 +11,19 @@ const TYPE_LABELS: Record<string, string> = {
   verification_failed: "Verification FAIL",
   resolved: "Incident resolved",
   closed: "Incident closed",
+  sla_warning: "SLA hampir terlewati",
+  sla_breached: "SLA terlewati (breach)",
+  sla_reminder: "Pengingat: SLA masih breach",
+  change_submitted: "Change menunggu approval",
+  change_approved: "Change disetujui",
+  change_rejected: "Change ditolak",
+  change_changes_requested: "Change perlu revisi",
+  change_scheduled: "Change dijadwalkan",
+  change_started: "Implementasi change dimulai",
+  change_failed: "Change gagal / rollback",
+  change_closed: "Change ditutup",
+  change_cancelled: "Change dibatalkan",
+  change_caused_incident: "Incident ditautkan sebagai akibat change",
 };
 
 export function Notifications() {
@@ -91,12 +104,15 @@ export function Notifications() {
                       </span>
                     )}
                   </p>
-                  <Link
-                    to={`/incidents/${n.incident_id}`}
-                    className="text-iris hover:underline"
-                  >
-                    Lihat incident →
-                  </Link>
+                  {n.change_id !== null ? (
+                    <Link to={`/changes/${n.change_id}`} className="text-iris hover:underline">
+                      Lihat change →
+                    </Link>
+                  ) : (
+                    <Link to={`/incidents/${n.incident_id ?? ""}`} className="text-iris hover:underline">
+                      Lihat incident →
+                    </Link>
+                  )}
                 </div>
                 {n.read_at === null && (
                   <button

@@ -57,6 +57,9 @@ type Incident struct {
 	ResolvedAt    *time.Time `json:"resolved_at"`
 	ClosedAt      *time.Time `json:"closed_at"`
 	ClosedBy      *string    `json:"closed_by"`
+	// SLA is filled on list/detail responses; nil when the incident predates
+	// SLA (PRD_SLA_Escalation.md §6.3).
+	SLA *SLASummary `json:"sla"`
 }
 
 // CreateIncidentInput is the payload for POST /api/incidents.
@@ -154,10 +157,12 @@ const (
 )
 
 // Notification is a trans_notification row: one in-app item per recipient per
-// event, plus the email-channel delivery state.
+// event, plus the email-channel delivery state. Exactly one of IncidentID /
+// ChangeID is the subject (change notifications: PRD_Change_Management.md §13).
 type Notification struct {
 	ID          string  `json:"id"`
-	IncidentID  string  `json:"incident_id"`
+	IncidentID  *string `json:"incident_id"`
+	ChangeID    *string `json:"change_id"`
 	Type        string  `json:"type"`
 	RecipientID string  `json:"recipient_id"`
 	ActorID     *string `json:"actor_id"`

@@ -3,10 +3,12 @@ import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { ApiError, api } from "../api/client";
-import type { ApprovalDecision, Change, ChangeInput, User } from "../api/types";
-import { canViewChanges, useAuth } from "../auth/AuthContext";
+import type { ApprovalDecision, Change, ChangeInput, ChangeRelation, User } from "../api/types";
+import { canLinkChange, canViewChanges, useAuth } from "../auth/AuthContext";
 import { useMeta, useUsers } from "../hooks/useMeta";
+import { ChangeAttachmentsPanel } from "../components/ChangeAttachmentsPanel";
 import { ChangeForm } from "../components/ChangeForm";
+import { ChangeLifecyclePanel } from "../components/ChangeLifecyclePanel";
 import { ChangeStatusBadge } from "../components/ChangeStatusBadge";
 import { ChangeTypeBadge } from "../components/ChangeTypeBadge";
 import { RiskBadge } from "../components/RiskBadge";
@@ -46,7 +48,17 @@ function activityLabel(type: string, from: string | null, to: string | null, pay
     case "comment":
       return "Komentar ditambahkan";
     case "incident_link":
-      return `Ditautkan ke ${payloadField(payload, "incident_no")} (${payloadField(payload, "relation")})`;
+      return `${payloadField(payload, "action") === "unlink" ? "Link dilepas dari" : "Ditautkan ke"} ${payloadField(payload, "incident_no")} (${payloadField(payload, "relation")})`;
+    case "schedule":
+      return `Dijadwalkan ${formatTime(payloadField(payload, "planned_start"))} – ${formatTime(payloadField(payload, "planned_end"))}`;
+    case "start":
+      return `Implementasi dimulai (${from ?? "?"} → ${to ?? "?"})`;
+    case "complete":
+      return `Implementasi selesai: ${payloadField(payload, "outcome")}`;
+    case "close":
+      return "Change ditutup";
+    case "attachment":
+      return `File diunggah: ${payloadField(payload, "file_name")}`;
     default:
       return type;
   }
@@ -110,6 +122,8 @@ export function ChangeDetail() {
   const [decisionReason, setDecisionReason] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [commentBody, setCommentBody] = useState("");
+  const [linkNo, setLinkNo] = useState("");
+  const [linkRelation, setLinkRelation] = useState<ChangeRelation>("FIX_FOR");
 
   const changeQuery = useQuery({
     queryKey: ["change", changeId],
@@ -216,6 +230,33 @@ export function ChangeDetail() {
     },
     onError: fail,
   });
+  const linkMutation = useMutation({
+    mutationFn: async () => {
+      const no = linkNo.trim().toUpperCase();
+      const found = await api.listIncidents({ q: no, limit: 10 });
+      const incident = found.data.find((i) => i.incident_no === no);
+      if (incident === undefined) throw new Error(`Incident ${no} tidak ditemukan.`);
+      return api.linkIncident(changeId, incident.id, linkRelation);
+    },
+    onSuccess: () => {
+      setLinkNo("");
+      done("Incident ditautkan.");
+    },
+    onError: (err: unknown) => {
+      if (err instanceof Error && !(err instanceof ApiError)) {
+        setSuccess(null);
+        setActionError(err.message);
+        return;
+      }
+      fail(err);
+    },
+  });
+  const unlinkMutation = useMutation({
+    mutationFn: ({ incidentId, relation }: { incidentId: string; relation: ChangeRelation }) =>
+      api.unlinkIncident(changeId, incidentId, relation),
+    onSuccess: () => done("Link incident dilepas."),
+    onError: fail,
+  });
   const commentMutation = useMutation({
     mutationFn: (body: string) => api.addChangeComment(changeId, body),
     onSuccess: () => {
@@ -293,6 +334,15 @@ export function ChangeDetail() {
     cancelMutation.mutate();
   }
 
+  function submitLink(e: FormEvent) {
+    e.preventDefault();
+    if (linkNo.trim() === "") {
+      setActionError("Isi nomor incident (cth INC-2026-000123).");
+      return;
+    }
+    linkMutation.mutate();
+  }
+
   function submitComment(e: FormEvent) {
     e.preventDefault();
     if (commentBody.trim() === "") {
@@ -308,6 +358,17 @@ export function ChangeDetail() {
     { label: "Rollback plan", value: change.rollback_plan },
     { label: "Test plan", value: change.test_plan },
   ];
+  if (change.outcome !== null) {
+    plans.push({
+      label: `Outcome: ${change.outcome}`,
+      value: change.outcome_notes,
+    });
+  }
+  if (change.status === "CLOSED") {
+    plans.push({ label: "Post-implementation review", value: change.review_notes });
+  }
+  const canLink = user !== null && canLinkChange(user.role);
+  const linkable = change.status !== "REJECTED" && change.status !== "CANCELLED";
 
   return (
     <section className="w-full space-y-6 p-6">
@@ -381,6 +442,22 @@ export function ChangeDetail() {
               <dt className="text-xs uppercase">Diubah</dt>
               <dd className="text-ink">{formatTime(change.updated_at)}</dd>
             </div>
+            <div>
+              <dt className="text-xs uppercase">Jadwal</dt>
+              <dd className="text-ink">
+                {change.planned_start
+                  ? `${formatTime(change.planned_start)} – ${formatTime(change.planned_end)}`
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase">Mulai aktual</dt>
+              <dd className="text-ink">{formatTime(change.actual_start)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase">Selesai aktual</dt>
+              <dd className="text-ink">{formatTime(change.actual_end)}</dd>
+            </div>
           </dl>
           <div className="mt-4 space-y-3">
             {plans.map((p) => (
@@ -447,6 +524,8 @@ export function ChangeDetail() {
         </div>
       )}
 
+      <ChangeLifecyclePanel change={change} user={user} onDone={done} onError={fail} />
+
       {change.status === "SUBMITTED" && !showDecision && (
         <p className="rounded-lg border border-mist bg-lilac px-4 py-3 text-sm text-deep">
           Menunggu keputusan approver (Manager/Lead).
@@ -486,13 +565,56 @@ export function ChangeDetail() {
               </Link>
               <span className="min-w-0 flex-1 truncate">{l.incident_title}</span>
               <StatusBadge status={l.incident_status} />
+              {canLink && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    unlinkMutation.mutate({ incidentId: l.incident_id, relation: l.relation })
+                  }
+                  disabled={unlinkMutation.isPending}
+                  className="rounded-full px-2 py-0.5 text-xs font-semibold text-veil hover:bg-lilac disabled:opacity-50"
+                  aria-label={`Lepas link ${l.incident_no}`}
+                >
+                  Lepas
+                </button>
+              )}
             </li>
           ))}
           {linksQuery.data && linksQuery.data.data.length === 0 && (
             <li className="text-veil">Belum ada incident yang ditautkan.</li>
           )}
         </ul>
+        {canLink && linkable && (
+          <form onSubmit={submitLink} className="mt-3 flex flex-wrap gap-2">
+            <input
+              value={linkNo}
+              onChange={(e) => setLinkNo(e.target.value)}
+              placeholder="Nomor incident, cth INC-2026-000123"
+              className={`min-w-52 flex-1 ${inputClass}`}
+            />
+            <select
+              value={linkRelation}
+              onChange={(e) => setLinkRelation(e.target.value as ChangeRelation)}
+              className="rounded border border-mist bg-paper px-3 py-2 text-sm focus:border-iris focus:outline-none"
+              aria-label="Relasi"
+            >
+              <option value="FIX_FOR">FIX_FOR — change ini memperbaiki incident</option>
+              <option value="CAUSED_BY">CAUSED_BY — incident akibat change ini</option>
+            </select>
+            <button type="submit" disabled={linkMutation.isPending} className={secondaryButton}>
+              {linkMutation.isPending ? "…" : "Tautkan"}
+            </button>
+          </form>
+        )}
       </div>
+
+      <ChangeAttachmentsPanel
+        change={change}
+        user={user}
+        userById={userById}
+        onDone={done}
+        onError={fail}
+      />
 
       {showCancel && (
         <div className="rounded-lg border border-mist bg-paper p-6">

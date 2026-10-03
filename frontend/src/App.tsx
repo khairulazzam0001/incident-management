@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import type { ReactElement } from "react";
 import { useAuth } from "./auth/AuthContext";
 import { AdminLayout } from "./components/AdminLayout";
+import { ChangeCalendar } from "./pages/ChangeCalendar";
 import { ChangeDetail } from "./pages/ChangeDetail";
 import { ChangeList } from "./pages/ChangeList";
 import { ChangeNew } from "./pages/ChangeNew";
@@ -41,6 +42,7 @@ function Shell() {
           <Route path="/incidents/:id" element={<IncidentDetail />} />
           <Route path="/changes" element={<ChangeList />} />
           <Route path="/changes/new" element={<ChangeNew />} />
+          <Route path="/changes/calendar" element={<ChangeCalendar />} />
           <Route path="/changes/:id" element={<ChangeDetail />} />
         </Routes>
       </>

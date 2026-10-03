@@ -5,10 +5,15 @@ import type {
   Change,
   ChangeActivity,
   ChangeApproval,
+  ChangeAttachment,
   ChangeComment,
   ChangeIncidentLink,
   ChangeInput,
   ChangeListResponse,
+  ChangeOutcome,
+  ChangeRelation,
+  ChangeSummary,
+  ScheduleResult,
   DataList,
   AttachmentListResponse,
   Comment,
@@ -17,6 +22,12 @@ import type {
   Dashboard,
   Fix,
   FixListResponse,
+  Holiday,
+  IncidentSLA,
+  SLADashboard,
+  SLAPolicy,
+  SLASettings,
+  BusinessHours,
   HealthResponse,
   Incident,
   IncidentListResponse,
@@ -101,6 +112,41 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   return data as T;
 }
 
+// Upload multipart field "file" (FR-09 / CM-FR-13).
+async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getStoredToken();
+  if (token !== null) headers.Authorization = `Bearer ${token}`;
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: form });
+  const data: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    if (isApiErrorBody(data)) throw new ApiError(res.status, data);
+    throw new ApiError(res.status, {
+      code: "UNKNOWN_ERROR",
+      message: `Upload gagal (HTTP ${res.status}).`,
+    });
+  }
+  return data as T;
+}
+
+async function downloadFile(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = getStoredToken();
+  if (token !== null) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}${path}`, { headers });
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => null);
+    if (isApiErrorBody(data)) throw new ApiError(res.status, data);
+    throw new ApiError(res.status, {
+      code: "UNKNOWN_ERROR",
+      message: `Unduh gagal (HTTP ${res.status}).`,
+    });
+  }
+  return res.blob();
+}
+
 export interface IncidentFilters {
   status?: string;
   severity?: string;
@@ -111,6 +157,7 @@ export interface IncidentFilters {
   assignee?: string;
   created_from?: string;
   created_to?: string;
+  sla?: string;
   sort?: string;
   order?: string;
   page?: number;
@@ -129,6 +176,7 @@ function toQuery(f: IncidentFilters): string {
   if (f.assignee) params.set("assignee", f.assignee);
   if (f.created_from) params.set("created_from", f.created_from);
   if (f.created_to) params.set("created_to", f.created_to);
+  if (f.sla) params.set("sla", f.sla);
   if (f.sort) params.set("sort", f.sort);
   if (f.order) params.set("order", f.order);
   if (f.page !== undefined) params.set("page", String(f.page));
@@ -145,6 +193,9 @@ export interface ChangeFilters {
   environment?: string;
   requester?: string;
   implementer?: string;
+  scheduled_from?: string;
+  scheduled_to?: string;
+  sort?: string;
   q?: string;
   page?: number;
   limit?: number;
@@ -161,6 +212,9 @@ function changeQuery(f: ChangeFilters): string {
     "environment",
     "requester",
     "implementer",
+    "scheduled_from",
+    "scheduled_to",
+    "sort",
     "q",
   ] as const;
   for (const k of keys) {
@@ -275,44 +329,11 @@ export const api = {
       signal,
     });
   },
-  async uploadAttachment(id: string, file: File): Promise<Attachment> {
-    const headers: Record<string, string> = {};
-    const token = getStoredToken();
-    if (token !== null) headers.Authorization = `Bearer ${token}`;
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`${BASE_URL}/api/incidents/${id}/attachments`, {
-      method: "POST",
-      headers,
-      body: form,
-    });
-    const data: unknown = await res.json().catch(() => null);
-    if (!res.ok) {
-      if (isApiErrorBody(data)) throw new ApiError(res.status, data);
-      throw new ApiError(res.status, {
-        code: "UNKNOWN_ERROR",
-        message: `Upload gagal (HTTP ${res.status}).`,
-      });
-    }
-    return data as Attachment;
+  uploadAttachment(id: string, file: File): Promise<Attachment> {
+    return uploadFile<Attachment>(`/api/incidents/${id}/attachments`, file);
   },
-  async downloadAttachment(id: string, aid: string): Promise<Blob> {
-    const headers: Record<string, string> = {};
-    const token = getStoredToken();
-    if (token !== null) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(
-      `${BASE_URL}/api/incidents/${id}/attachments/${aid}/download`,
-      { headers },
-    );
-    if (!res.ok) {
-      const data: unknown = await res.json().catch(() => null);
-      if (isApiErrorBody(data)) throw new ApiError(res.status, data);
-      throw new ApiError(res.status, {
-        code: "UNKNOWN_ERROR",
-        message: `Unduh gagal (HTTP ${res.status}).`,
-      });
-    }
-    return res.blob();
+  downloadAttachment(id: string, aid: string): Promise<Blob> {
+    return downloadFile(`/api/incidents/${id}/attachments/${aid}/download`);
   },
   getDashboard(signal?: AbortSignal): Promise<Dashboard> {
     return request<Dashboard>("/api/dashboard", { signal });
@@ -381,6 +402,88 @@ export const api = {
   },
   getChangeIncidents(id: string, signal?: AbortSignal): Promise<DataList<ChangeIncidentLink>> {
     return request<DataList<ChangeIncidentLink>>(`/api/changes/${id}/incidents`, { signal });
+  },
+  scheduleChange(id: string, plannedStart: string, plannedEnd: string): Promise<ScheduleResult> {
+    return request<ScheduleResult>(`/api/changes/${id}/schedule`, {
+      method: "POST",
+      body: { planned_start: plannedStart, planned_end: plannedEnd },
+    });
+  },
+  startChange(id: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/start`, { method: "POST" });
+  },
+  completeChange(id: string, outcome: ChangeOutcome, outcomeNotes: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/complete`, {
+      method: "POST",
+      body: { outcome, outcome_notes: outcomeNotes },
+    });
+  },
+  closeChange(id: string, reviewNotes: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/close`, {
+      method: "POST",
+      body: { review_notes: reviewNotes },
+    });
+  },
+  linkIncident(
+    id: string,
+    incidentId: string,
+    relation: ChangeRelation,
+  ): Promise<DataList<ChangeIncidentLink>> {
+    return request<DataList<ChangeIncidentLink>>(`/api/changes/${id}/incidents`, {
+      method: "POST",
+      body: { incident_id: incidentId, relation },
+    });
+  },
+  unlinkIncident(id: string, incidentId: string, relation: ChangeRelation): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(
+      `/api/changes/${id}/incidents/${incidentId}?relation=${relation}`,
+      { method: "DELETE" },
+    );
+  },
+  getIncidentSLA(id: string, signal?: AbortSignal): Promise<DataList<IncidentSLA>> {
+    return request<DataList<IncidentSLA>>(`/api/incidents/${id}/sla`, { signal });
+  },
+  getSLASettings(signal?: AbortSignal): Promise<SLASettings> {
+    return request<SLASettings>("/api/master/sla-policies", { signal });
+  },
+  updateSLAPolicy(
+    priority: string,
+    input: Omit<SLAPolicy, "priority" | "updated_by" | "updated_at">,
+  ): Promise<SLAPolicy> {
+    return request<SLAPolicy>(`/api/master/sla-policies/${priority}`, { method: "PUT", body: input });
+  },
+  updateBusinessHours(calendar: string, hours: BusinessHours[]): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/api/master/business-hours/${calendar}`, {
+      method: "PUT",
+      body: { hours },
+    });
+  },
+  getHolidays(year: number, signal?: AbortSignal): Promise<DataList<Holiday>> {
+    return request<DataList<Holiday>>(`/api/master/holidays?year=${year}`, { signal });
+  },
+  createHoliday(input: { date: string; name: string }): Promise<Holiday> {
+    return request<Holiday>("/api/master/holidays", { method: "POST", body: input });
+  },
+  deleteHoliday(id: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/api/master/holidays/${id}`, { method: "DELETE" });
+  },
+  getSLADashboard(signal?: AbortSignal): Promise<SLADashboard> {
+    return request<SLADashboard>("/api/dashboard/sla", { signal });
+  },
+  getChangeAttachments(id: string, signal?: AbortSignal): Promise<DataList<ChangeAttachment>> {
+    return request<DataList<ChangeAttachment>>(`/api/changes/${id}/attachments`, { signal });
+  },
+  uploadChangeAttachment(id: string, file: File): Promise<ChangeAttachment> {
+    return uploadFile<ChangeAttachment>(`/api/changes/${id}/attachments`, file);
+  },
+  downloadChangeAttachment(id: string, aid: string): Promise<Blob> {
+    return downloadFile(`/api/changes/${id}/attachments/${aid}/download`);
+  },
+  getChangeSummary(signal?: AbortSignal): Promise<ChangeSummary> {
+    return request<ChangeSummary>("/api/changes/summary", { signal });
+  },
+  getRecentChanges(id: string, signal?: AbortSignal): Promise<DataList<Change>> {
+    return request<DataList<Change>>(`/api/incidents/${id}/recent-changes`, { signal });
   },
   getIncidentChanges(id: string, signal?: AbortSignal): Promise<DataList<ChangeIncidentLink>> {
     return request<DataList<ChangeIncidentLink>>(`/api/incidents/${id}/changes`, { signal });

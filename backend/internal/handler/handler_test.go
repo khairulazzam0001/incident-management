@@ -53,8 +53,8 @@ func testRouter(t *testing.T, pool *pgxpool.Pool) http.Handler {
 func reset(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(), `TRUNCATE
-		trans_change_incident, trans_change_comment, trans_change_activity, trans_change_approval,
-		trans_change, trans_notification, trans_incident_attachment, trans_incident_verification, trans_incident_fix,
+		trans_change_attachment, trans_change_incident, trans_change_comment, trans_change_activity, trans_change_approval,
+		trans_change, trans_notification, trans_incident_escalation, trans_incident_sla, trans_incident_attachment, trans_incident_verification, trans_incident_fix,
 		trans_incident_investigation, trans_incident_activity, trans_incident_comment,
 		trans_incident_assignment, trans_incident`)
 	if err != nil {

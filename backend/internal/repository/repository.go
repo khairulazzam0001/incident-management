@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/khairulazzam0001/incident-management/backend/internal/model"
+	"github.com/khairulazzam0001/incident-management/backend/internal/sla"
 )
 
 // Repository wraps the connection pool.
@@ -52,7 +53,7 @@ func (r *Repository) NextIncidentNo(ctx context.Context) (string, error) {
 }
 
 // CreateIncident inserts the incident and its "created" activity atomically.
-func (r *Repository) CreateIncident(ctx context.Context, in model.CreateIncidentInput, incidentNo, reporterID string) (*model.Incident, error) {
+func (r *Repository) CreateIncident(ctx context.Context, in model.CreateIncidentInput, incidentNo, reporterID string, slaRows []SLAInstanceInput) (*model.Incident, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -75,6 +76,9 @@ func (r *Repository) CreateIncident(ctx context.Context, in model.CreateIncident
 		INSERT INTO trans_incident_activity (incident_id, type, actor_id, to_status)
 		VALUES ($1,'created',$2,'NEW')`, created.ID, reporterID); err != nil {
 		return nil, fmt.Errorf("insert created activity: %w", err)
+	}
+	if err := insertSLAInstances(ctx, tx, created.ID, slaRows); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
@@ -100,6 +104,7 @@ type IncidentFilter struct {
 	InvolvedID    string
 	CreatedFrom   string
 	CreatedTo     string
+	SLA           string // "at_risk" | "breached" (PRD_SLA_Escalation.md §10)
 	Sort          string
 	Order         string
 	Page          int
@@ -147,6 +152,15 @@ func (r *Repository) ListIncidents(ctx context.Context, f IncidentFilter) ([]*mo
 	}
 	if f.CreatedTo != "" {
 		add("created_at < ($%d::date + INTERVAL '1 day')", f.CreatedTo)
+	}
+	switch f.SLA {
+	case "at_risk":
+		conds = append(conds, `EXISTS (SELECT 1 FROM trans_incident_sla s WHERE s.incident_id = trans_incident.id
+			AND s.status = 'RUNNING' AND s.stopped_at IS NULL
+			AND (s.warned_at IS NOT NULL OR s.warn_at <= now()))`)
+	case "breached":
+		conds = append(conds, `EXISTS (SELECT 1 FROM trans_incident_sla s WHERE s.incident_id = trans_incident.id
+			AND s.status = 'BREACHED' AND s.stopped_at IS NULL)`)
 	}
 	sortCols := map[string]string{
 		"created_at": "created_at", "updated_at": "updated_at",
@@ -235,6 +249,16 @@ func (r *Repository) UpdateStatus(ctx context.Context, id, from, to, actorID str
 		VALUES ($1,'status_change',$2,$3,$4)`, id, actorID, from, to); err != nil {
 		return nil, fmt.Errorf("insert status activity: %w", err)
 	}
+	switch to {
+	case model.StatusResolved:
+		if err := stopSLA(ctx, tx, id, sla.MetricResolution); err != nil {
+			return nil, err
+		}
+	case model.StatusClosed:
+		if err := cancelOpenSLA(ctx, tx, id); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
@@ -267,6 +291,9 @@ func (r *Repository) AssignIncident(ctx context.Context, id string, teamID, picI
 		VALUES ($1,'assignment',$2,$3,$4,jsonb_build_object('team_id',$5::text,'pic_id',$6::text))`,
 		id, by, fromStatus, toStatus, teamID, picID); err != nil {
 		return nil, fmt.Errorf("insert assignment activity: %w", err)
+	}
+	if err := stopSLA(ctx, tx, id, sla.MetricResponse); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
@@ -468,6 +495,11 @@ func (r *Repository) AddVerification(ctx context.Context, incidentID, verifierID
 		incidentID, verifierID, from, to, v.ID, result); err != nil {
 		return nil, fmt.Errorf("insert verification activity: %w", err)
 	}
+	if to == model.StatusResolved {
+		if err := stopSLA(ctx, tx, incidentID, sla.MetricResolution); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
@@ -498,7 +530,7 @@ func (r *Repository) ListVerifications(ctx context.Context, incidentID string) (
 }
 
 // Reopen moves RESOLVED/CLOSED back to INVESTIGATING with a reason (FR-12).
-func (r *Repository) Reopen(ctx context.Context, id, from, to, actorID, reason string) (*model.Incident, error) {
+func (r *Repository) Reopen(ctx context.Context, id, from, to, actorID, reason string, slaRows []SLAInstanceInput) (*model.Incident, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -520,6 +552,9 @@ func (r *Repository) Reopen(ctx context.Context, id, from, to, actorID, reason s
 		VALUES ($1,'reopen',$2,$3,$4,jsonb_build_object('reason',$5::text))`,
 		id, actorID, from, to, reason); err != nil {
 		return nil, fmt.Errorf("insert reopen activity: %w", err)
+	}
+	if err := insertSLAInstances(ctx, tx, id, slaRows); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
