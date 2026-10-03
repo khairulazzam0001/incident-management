@@ -11,6 +11,34 @@ import (
 	"github.com/khairulazzam0001/incident-management/backend/internal/service"
 )
 
+// readUploadFile reads the multipart field "file" (body ≤ 12 MiB; the service
+// enforces the 10 MiB file limit). It writes the error response itself.
+func readUploadFile(d Deps, w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+	if err := r.ParseMultipartForm(12 << 20); err != nil {
+		writeServiceError(d, w, r, service.BadRequest("INVALID_UPLOAD", "Body harus multipart dengan field file.", nil))
+		return "", nil, false
+	}
+	files := r.MultipartForm.File["file"]
+	if len(files) == 0 {
+		writeServiceError(d, w, r, service.BadRequest("VALIDATION_ERROR", "Field file wajib diisi.", nil))
+		return "", nil, false
+	}
+	fh := files[0]
+	f, err := fh.Open()
+	if err != nil {
+		writeServiceError(d, w, r, service.BadRequest("INVALID_UPLOAD", "File tidak bisa dibaca.", nil))
+		return "", nil, false
+	}
+	defer func() { _ = f.Close() }()
+	content, err := io.ReadAll(f)
+	if err != nil {
+		writeServiceError(d, w, r, service.BadRequest("INVALID_UPLOAD", "File tidak bisa dibaca.", nil))
+		return "", nil, false
+	}
+	return fh.Filename, content, true
+}
+
 // HandleUploadAttachment stores a multipart file (201). Field name: "file".
 func HandleUploadAttachment(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -18,29 +46,11 @@ func HandleUploadAttachment(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
-		if err := r.ParseMultipartForm(12 << 20); err != nil {
-			writeServiceError(d, w, r, service.BadRequest("INVALID_UPLOAD", "Body harus multipart dengan field file.", nil))
+		name, content, ok := readUploadFile(d, w, r)
+		if !ok {
 			return
 		}
-		files := r.MultipartForm.File["file"]
-		if len(files) == 0 {
-			writeServiceError(d, w, r, service.BadRequest("VALIDATION_ERROR", "Field file wajib diisi.", nil))
-			return
-		}
-		fh := files[0]
-		f, err := fh.Open()
-		if err != nil {
-			writeServiceError(d, w, r, service.BadRequest("INVALID_UPLOAD", "File tidak bisa dibaca.", nil))
-			return
-		}
-		defer func() { _ = f.Close() }()
-		content, err := io.ReadAll(f)
-		if err != nil {
-			writeServiceError(d, w, r, service.BadRequest("INVALID_UPLOAD", "File tidak bisa dibaca.", nil))
-			return
-		}
-		a, err := d.Incidents.UploadAttachment(r.Context(), actor, chi.URLParam(r, "id"), fh.Filename, content)
+		a, err := d.Incidents.UploadAttachment(r.Context(), actor, chi.URLParam(r, "id"), name, content)
 		if err != nil {
 			writeServiceError(d, w, r, err)
 			return

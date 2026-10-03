@@ -5,6 +5,7 @@ import type {
   Change,
   ChangeActivity,
   ChangeApproval,
+  ChangeAttachment,
   ChangeComment,
   ChangeIncidentLink,
   ChangeInput,
@@ -103,6 +104,41 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
     });
   }
   return data as T;
+}
+
+// Upload multipart field "file" (FR-09 / CM-FR-13).
+async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getStoredToken();
+  if (token !== null) headers.Authorization = `Bearer ${token}`;
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: form });
+  const data: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    if (isApiErrorBody(data)) throw new ApiError(res.status, data);
+    throw new ApiError(res.status, {
+      code: "UNKNOWN_ERROR",
+      message: `Upload gagal (HTTP ${res.status}).`,
+    });
+  }
+  return data as T;
+}
+
+async function downloadFile(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = getStoredToken();
+  if (token !== null) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}${path}`, { headers });
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => null);
+    if (isApiErrorBody(data)) throw new ApiError(res.status, data);
+    throw new ApiError(res.status, {
+      code: "UNKNOWN_ERROR",
+      message: `Unduh gagal (HTTP ${res.status}).`,
+    });
+  }
+  return res.blob();
 }
 
 export interface IncidentFilters {
@@ -285,44 +321,11 @@ export const api = {
       signal,
     });
   },
-  async uploadAttachment(id: string, file: File): Promise<Attachment> {
-    const headers: Record<string, string> = {};
-    const token = getStoredToken();
-    if (token !== null) headers.Authorization = `Bearer ${token}`;
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`${BASE_URL}/api/incidents/${id}/attachments`, {
-      method: "POST",
-      headers,
-      body: form,
-    });
-    const data: unknown = await res.json().catch(() => null);
-    if (!res.ok) {
-      if (isApiErrorBody(data)) throw new ApiError(res.status, data);
-      throw new ApiError(res.status, {
-        code: "UNKNOWN_ERROR",
-        message: `Upload gagal (HTTP ${res.status}).`,
-      });
-    }
-    return data as Attachment;
+  uploadAttachment(id: string, file: File): Promise<Attachment> {
+    return uploadFile<Attachment>(`/api/incidents/${id}/attachments`, file);
   },
-  async downloadAttachment(id: string, aid: string): Promise<Blob> {
-    const headers: Record<string, string> = {};
-    const token = getStoredToken();
-    if (token !== null) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(
-      `${BASE_URL}/api/incidents/${id}/attachments/${aid}/download`,
-      { headers },
-    );
-    if (!res.ok) {
-      const data: unknown = await res.json().catch(() => null);
-      if (isApiErrorBody(data)) throw new ApiError(res.status, data);
-      throw new ApiError(res.status, {
-        code: "UNKNOWN_ERROR",
-        message: `Unduh gagal (HTTP ${res.status}).`,
-      });
-    }
-    return res.blob();
+  downloadAttachment(id: string, aid: string): Promise<Blob> {
+    return downloadFile(`/api/incidents/${id}/attachments/${aid}/download`);
   },
   getDashboard(signal?: AbortSignal): Promise<Dashboard> {
     return request<Dashboard>("/api/dashboard", { signal });
@@ -428,6 +431,15 @@ export const api = {
       `/api/changes/${id}/incidents/${incidentId}?relation=${relation}`,
       { method: "DELETE" },
     );
+  },
+  getChangeAttachments(id: string, signal?: AbortSignal): Promise<DataList<ChangeAttachment>> {
+    return request<DataList<ChangeAttachment>>(`/api/changes/${id}/attachments`, { signal });
+  },
+  uploadChangeAttachment(id: string, file: File): Promise<ChangeAttachment> {
+    return uploadFile<ChangeAttachment>(`/api/changes/${id}/attachments`, file);
+  },
+  downloadChangeAttachment(id: string, aid: string): Promise<Blob> {
+    return downloadFile(`/api/changes/${id}/attachments/${aid}/download`);
   },
   getChangeSummary(signal?: AbortSignal): Promise<ChangeSummary> {
     return request<ChangeSummary>("/api/changes/summary", { signal });

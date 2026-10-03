@@ -360,6 +360,16 @@ export interface ScheduleResult {
   conflicts: Change[];
 }
 
+export interface ChangeAttachment {
+  id: string;
+  change_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 export interface ChangeSummary {
   active_total: number;
   by_status: Record<string, number>;
