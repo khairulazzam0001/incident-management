@@ -63,6 +63,16 @@ func run() error {
 	}
 	incSvc := service.NewIncidentService(repo, mailer, log, service.DefaultUploadConfig(cfg.UploadDir))
 
+	// Worker SLA (PRD_SLA_Escalation.md §6.5): berhenti saat shutdown.
+	workerCtx, stopWorker := context.WithCancel(context.Background())
+	defer stopWorker()
+	if cfg.SLATick > 0 {
+		go incSvc.RunSLAWorker(workerCtx, cfg.SLATick)
+		log.Info("sla worker aktif", "interval", cfg.SLATick.String())
+	} else {
+		log.Info("sla worker dinonaktifkan")
+	}
+
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: handler.NewRouter(handler.Deps{

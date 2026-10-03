@@ -22,6 +22,12 @@ import type {
   Dashboard,
   Fix,
   FixListResponse,
+  Holiday,
+  IncidentSLA,
+  SLADashboard,
+  SLAPolicy,
+  SLASettings,
+  BusinessHours,
   HealthResponse,
   Incident,
   IncidentListResponse,
@@ -151,6 +157,7 @@ export interface IncidentFilters {
   assignee?: string;
   created_from?: string;
   created_to?: string;
+  sla?: string;
   sort?: string;
   order?: string;
   page?: number;
@@ -169,6 +176,7 @@ function toQuery(f: IncidentFilters): string {
   if (f.assignee) params.set("assignee", f.assignee);
   if (f.created_from) params.set("created_from", f.created_from);
   if (f.created_to) params.set("created_to", f.created_to);
+  if (f.sla) params.set("sla", f.sla);
   if (f.sort) params.set("sort", f.sort);
   if (f.order) params.set("order", f.order);
   if (f.page !== undefined) params.set("page", String(f.page));
@@ -431,6 +439,36 @@ export const api = {
       `/api/changes/${id}/incidents/${incidentId}?relation=${relation}`,
       { method: "DELETE" },
     );
+  },
+  getIncidentSLA(id: string, signal?: AbortSignal): Promise<DataList<IncidentSLA>> {
+    return request<DataList<IncidentSLA>>(`/api/incidents/${id}/sla`, { signal });
+  },
+  getSLASettings(signal?: AbortSignal): Promise<SLASettings> {
+    return request<SLASettings>("/api/master/sla-policies", { signal });
+  },
+  updateSLAPolicy(
+    priority: string,
+    input: Omit<SLAPolicy, "priority" | "updated_by" | "updated_at">,
+  ): Promise<SLAPolicy> {
+    return request<SLAPolicy>(`/api/master/sla-policies/${priority}`, { method: "PUT", body: input });
+  },
+  updateBusinessHours(calendar: string, hours: BusinessHours[]): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/api/master/business-hours/${calendar}`, {
+      method: "PUT",
+      body: { hours },
+    });
+  },
+  getHolidays(year: number, signal?: AbortSignal): Promise<DataList<Holiday>> {
+    return request<DataList<Holiday>>(`/api/master/holidays?year=${year}`, { signal });
+  },
+  createHoliday(input: { date: string; name: string }): Promise<Holiday> {
+    return request<Holiday>("/api/master/holidays", { method: "POST", body: input });
+  },
+  deleteHoliday(id: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/api/master/holidays/${id}`, { method: "DELETE" });
+  },
+  getSLADashboard(signal?: AbortSignal): Promise<SLADashboard> {
+    return request<SLADashboard>("/api/dashboard/sla", { signal });
   },
   getChangeAttachments(id: string, signal?: AbortSignal): Promise<DataList<ChangeAttachment>> {
     return request<DataList<ChangeAttachment>>(`/api/changes/${id}/attachments`, { signal });

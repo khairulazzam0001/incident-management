@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/khairulazzam0001/incident-management/backend/internal/model"
+	"github.com/khairulazzam0001/incident-management/backend/internal/repository"
+	"github.com/khairulazzam0001/incident-management/backend/internal/sla"
 )
 
 // InvestigationInput is the payload for POST /api/incidents/:id/investigations.
@@ -257,7 +260,17 @@ func (s *IncidentService) Reopen(ctx context.Context, actor *model.AuthUser, id 
 			fmt.Sprintf("Reopen hanya dari status RESOLVED/CLOSED (saat ini %s).", cur.Status),
 			map[string]string{"status": cur.Status})
 	}
-	updated, err := s.repo.Reopen(ctx, id, cur.Status, model.StatusInvestigating, actor.ID, in.Reason)
+	// Reopen = siklus SLA resolution baru dari waktu reopen (Q4); incident
+	// tanpa SLA (dibuat sebelum SLA aktif) tetap tanpa SLA.
+	var slaRows []repository.SLAInstanceInput
+	if has, err := s.repo.HasSLA(ctx, id); err != nil {
+		return nil, fmt.Errorf("check sla: %w", err)
+	} else if has {
+		if slaRows, err = s.planSLA(ctx, cur.Priority, time.Now().UTC(), sla.MetricResolution); err != nil {
+			return nil, err
+		}
+	}
+	updated, err := s.repo.Reopen(ctx, id, cur.Status, model.StatusInvestigating, actor.ID, in.Reason, slaRows)
 	if err != nil {
 		return nil, fmt.Errorf("reopen incident: %w", err)
 	}

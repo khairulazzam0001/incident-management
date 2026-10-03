@@ -180,6 +180,15 @@ GET    /api/incidents/:id/recent-changes  # change app+env sama, mulai ≤ 72 ja
 POST   /api/changes/:id/attachments       # multipart field=file, tolak bila REJECTED/CANCELLED
 GET    /api/changes/:id/attachments
 GET    /api/changes/:id/attachments/:aid/download
+# SLA & Escalation (PRD_SLA_Escalation.md §10):
+GET    /api/incidents?sla=at_risk|breached  # filter; item incident (list/detail) memuat field `sla` {response, resolution} atau null
+GET    /api/incidents/:id/sla             # instance SLA semua siklus (read scope)
+GET    /api/dashboard/sla?from=&to=       # compliance/MTTA/MTTR per priority + breach aktif (internal)
+GET    /api/master/sla-policies           # {policies, calendars} (internal)
+PUT    /api/master/sla-policies/:priority # ManagerLead; snapshot: hanya incident baru
+PUT    /api/master/business-hours/:calendar  # ManagerLead; {hours:[{weekday,start_minute,end_minute}]}
+GET    /api/master/holidays?year= | POST {date,name} | DELETE /:id   # tulis: ManagerLead
+# Worker SLA jalan di proses API (SLA_TICK_SECONDS default 60, SLA_WORKER_DISABLED=true untuk mematikan).
 # Notifikasi: item memuat incident_id ATAU change_id (nullable, CM-2).
 # Gate: PATCH status FIXING → VERIFYING incident production tanpa change FIX_FOR terimplementasi → 409 CHANGE_REQUIRED.
 ```
@@ -199,6 +208,7 @@ Jangan ubah contract tanpa update frontend `api/` dan sebutkan di ringkasan akhi
 - Master: `master_user`, `master_team`, `master_application`, `master_environment`, `master_incident_source`, `master_incident_priority` (P1–P4), `master_incident_severity` (S1–S4), `master_incident_status` (NEW…CLOSED). Seed data master via migrasi.
 - Transaksi: `trans_incident` (termasuk `incident_no` unik), `trans_incident_assignment` (riwayat team/PIC), `trans_incident_comment`, `trans_incident_activity` (audit trail), `trans_incident_investigation`, `trans_incident_fix`, `trans_incident_verification`, `trans_incident_attachment`.
 - Change Management (`PRD_Change_Management.md` §12): master `master_change_type`, `master_change_risk`, `master_change_status`; transaksi `trans_change` (`change_no` unik `CHG-YYYY-NNNNNN`), `trans_change_approval`, `trans_change_activity`, `trans_change_comment`, `trans_change_incident` (FIX_FOR / CAUSED_BY), `trans_change_attachment`.
+- SLA (`PRD_SLA_Escalation.md` §9): master `master_sla_policy`, `master_business_calendar`, `master_business_hours`, `master_holiday`; transaksi `trans_incident_sla` (snapshot policy per siklus), `trans_incident_escalation` (UNIQUE sla_id+level).
 - Index: `trans_incident(status_id)`, `trans_incident(severity_id)`, `trans_incident(priority_id)`, `trans_incident(incident_no)` unik, `trans_incident_activity(incident_id)`; hindari query N+1 di timeline.
 - Semua status/assignment change wajib simpan actor + timestamp.
 

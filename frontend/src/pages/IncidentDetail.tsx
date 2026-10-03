@@ -16,6 +16,8 @@ import { useMeta, useUsers } from "../hooks/useMeta";
 import { PriorityBadge } from "../components/PriorityBadge";
 import { SeverityBadge } from "../components/SeverityBadge";
 import { ChangeStatusBadge } from "../components/ChangeStatusBadge";
+import { SlaBadge } from "../components/SlaBadge";
+import { SlaPanel } from "../components/SlaPanel";
 import { StatusBadge } from "../components/StatusBadge";
 
 function formatTime(iso: string | null): string {
@@ -44,6 +46,12 @@ function activityLabel(type: string, from: string | null, to: string | null): st
       return "Incident dibuka kembali";
     case "change_link":
       return "Link change request diubah";
+    case "sla_warning":
+      return "SLA hampir terlewati (peringatan)";
+    case "sla_breached":
+      return "SLA terlewati (breach) — dieskalasi";
+    case "sla_reminder":
+      return "Pengingat breach ke Manager";
     default:
       return type;
   }
@@ -139,6 +147,7 @@ export function IncidentDetail() {
     queryClient.invalidateQueries({ queryKey: ["verifications", incidentId] });
     queryClient.invalidateQueries({ queryKey: ["attachments", incidentId] });
     queryClient.invalidateQueries({ queryKey: ["incident-changes", incidentId] });
+    queryClient.invalidateQueries({ queryKey: ["incident-sla", incidentId] });
     queryClient.invalidateQueries({ queryKey: ["incidents"] });
   }
 
@@ -422,6 +431,7 @@ export function IncidentDetail() {
           <StatusBadge status={incident.status} />
           <SeverityBadge severity={incident.severity} />
           <PriorityBadge priority={incident.priority} />
+          <SlaBadge sla={incident.sla ?? null} />
         </div>
       </div>
 
@@ -454,6 +464,8 @@ export function IncidentDetail() {
           </div>
         </dl>
       </div>
+
+      <SlaPanel incidentId={incident.id} hasSla={incident.sla != null} compact={user?.role === "User"} />
 
       {actionError !== null && (
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
