@@ -1,6 +1,15 @@
 import type {
   ApiErrorBody,
+  ApprovalDecision,
   Attachment,
+  Change,
+  ChangeActivity,
+  ChangeApproval,
+  ChangeComment,
+  ChangeIncidentLink,
+  ChangeInput,
+  ChangeListResponse,
+  DataList,
   AttachmentListResponse,
   Comment,
   CommentListResponse,
@@ -122,6 +131,42 @@ function toQuery(f: IncidentFilters): string {
   if (f.created_to) params.set("created_to", f.created_to);
   if (f.sort) params.set("sort", f.sort);
   if (f.order) params.set("order", f.order);
+  if (f.page !== undefined) params.set("page", String(f.page));
+  if (f.limit !== undefined) params.set("limit", String(f.limit));
+  const s = params.toString();
+  return s ? `?${s}` : "";
+}
+
+export interface ChangeFilters {
+  status?: string;
+  type?: string;
+  risk?: string;
+  application_id?: string;
+  environment?: string;
+  requester?: string;
+  implementer?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+function changeQuery(f: ChangeFilters): string {
+  const params = new URLSearchParams();
+  const keys = [
+    "status",
+    "type",
+    "risk",
+    "application_id",
+    "environment",
+    "requester",
+    "implementer",
+    "q",
+  ] as const;
+  for (const k of keys) {
+    const v = f[k];
+    if (v) params.set(k, v);
+  }
   if (f.page !== undefined) params.set("page", String(f.page));
   if (f.limit !== undefined) params.set("limit", String(f.limit));
   const s = params.toString();
@@ -294,6 +339,51 @@ export const api = {
   },
   deleteTeam(id: string): Promise<void> {
     return request<void>(`/api/master/teams/${id}`, { method: "DELETE" });
+  },
+  listChanges(f: ChangeFilters): Promise<ChangeListResponse> {
+    return request<ChangeListResponse>(`/api/changes${changeQuery(f)}`, { signal: f.signal });
+  },
+  getChange(id: string, signal?: AbortSignal): Promise<Change> {
+    return request<Change>(`/api/changes/${id}`, { signal });
+  },
+  createChange(input: ChangeInput): Promise<Change> {
+    return request<Change>("/api/changes", { method: "POST", body: input });
+  },
+  updateChange(id: string, input: ChangeInput): Promise<Change> {
+    return request<Change>(`/api/changes/${id}`, { method: "PATCH", body: input });
+  },
+  submitChange(id: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/submit`, { method: "POST" });
+  },
+  decideChange(id: string, decision: ApprovalDecision, reason: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/approval`, {
+      method: "POST",
+      body: { decision, reason },
+    });
+  },
+  cancelChange(id: string, reason: string): Promise<Change> {
+    return request<Change>(`/api/changes/${id}/cancel`, { method: "POST", body: { reason } });
+  },
+  getChangeApprovals(id: string, signal?: AbortSignal): Promise<DataList<ChangeApproval>> {
+    return request<DataList<ChangeApproval>>(`/api/changes/${id}/approvals`, { signal });
+  },
+  getChangeTimeline(id: string, signal?: AbortSignal): Promise<DataList<ChangeActivity>> {
+    return request<DataList<ChangeActivity>>(`/api/changes/${id}/timeline`, { signal });
+  },
+  getChangeComments(id: string, signal?: AbortSignal): Promise<DataList<ChangeComment>> {
+    return request<DataList<ChangeComment>>(`/api/changes/${id}/comments`, { signal });
+  },
+  addChangeComment(id: string, body: string): Promise<ChangeComment> {
+    return request<ChangeComment>(`/api/changes/${id}/comments`, {
+      method: "POST",
+      body: { body },
+    });
+  },
+  getChangeIncidents(id: string, signal?: AbortSignal): Promise<DataList<ChangeIncidentLink>> {
+    return request<DataList<ChangeIncidentLink>>(`/api/changes/${id}/incidents`, { signal });
+  },
+  getIncidentChanges(id: string, signal?: AbortSignal): Promise<DataList<ChangeIncidentLink>> {
+    return request<DataList<ChangeIncidentLink>>(`/api/incidents/${id}/changes`, { signal });
   },
 };
 

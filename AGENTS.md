@@ -151,6 +151,20 @@ DELETE /api/master/teams/:id              # ManagerLead, 409 bila terpakai (tamb
 POST   /api/incidents/:id/attachments     # multipart field=file, PIC/koordinator, maks 10 MiB, png/jpg/gif/webp/pdf/txt/zip (tambahan #9, FR-09)
 GET    /api/incidents/:id/attachments     # list file (tambahan #9)
 GET    /api/incidents/:id/attachments/:aid/download  # unduh + access control (tambahan #9)
+GET    /api/incidents/:id/changes         # change ter-link ke incident (Change Mgmt CM-1)
+# Change Management (PRD_Change_Management.md §15) — CM-1:
+GET    /api/changes?status=&type=&risk=&application_id=&environment=&requester=&implementer=&scheduled_from=&scheduled_to=&q=&page=&limit=
+POST   /api/changes                       # create DRAFT; incident_id opsional → link FIX_FOR
+GET    /api/changes/:id
+PATCH  /api/changes/:id                   # edit, hanya DRAFT (requester/ManagerLead)
+POST   /api/changes/:id/submit            # DRAFT → SUBMITTED; STANDARD → APPROVED otomatis
+POST   /api/changes/:id/approval          # {decision: APPROVE|REJECT|REQUEST_CHANGES, reason}
+GET    /api/changes/:id/approvals
+POST   /api/changes/:id/cancel            # {reason}; DRAFT/SUBMITTED/APPROVED/SCHEDULED
+GET    /api/changes/:id/timeline
+POST   /api/changes/:id/comments
+GET    /api/changes/:id/comments
+GET    /api/changes/:id/incidents
 ```
 
 Body create incident (field lengkap menyusul master data):
@@ -167,6 +181,7 @@ Jangan ubah contract tanpa update frontend `api/` dan sebutkan di ringkasan akhi
 - Jangan edit migrasi yang sudah di-merge. Buat migrasi baru.
 - Master: `master_user`, `master_team`, `master_application`, `master_environment`, `master_incident_source`, `master_incident_priority` (P1–P4), `master_incident_severity` (S1–S4), `master_incident_status` (NEW…CLOSED). Seed data master via migrasi.
 - Transaksi: `trans_incident` (termasuk `incident_no` unik), `trans_incident_assignment` (riwayat team/PIC), `trans_incident_comment`, `trans_incident_activity` (audit trail), `trans_incident_investigation`, `trans_incident_fix`, `trans_incident_verification`, `trans_incident_attachment`.
+- Change Management (`PRD_Change_Management.md` §12): master `master_change_type`, `master_change_risk`, `master_change_status`; transaksi `trans_change` (`change_no` unik `CHG-YYYY-NNNNNN`), `trans_change_approval`, `trans_change_activity`, `trans_change_comment`, `trans_change_incident` (FIX_FOR / CAUSED_BY).
 - Index: `trans_incident(status_id)`, `trans_incident(severity_id)`, `trans_incident(priority_id)`, `trans_incident(incident_no)` unik, `trans_incident_activity(incident_id)`; hindari query N+1 di timeline.
 - Semua status/assignment change wajib simpan actor + timestamp.
 
