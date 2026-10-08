@@ -116,6 +116,7 @@ func HandleListIncidents(d Deps) http.HandlerFunc {
 			ApplicationID: q.Get("application"),
 			TeamID:        q.Get("team"),
 			AssigneeID:    q.Get("assignee"),
+			InvolvedID:    q.Get("involved"),
 			CreatedFrom:   q.Get("created_from"),
 			CreatedTo:     q.Get("created_to"),
 			SLA:           q.Get("sla"),

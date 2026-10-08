@@ -103,6 +103,11 @@ export function canViewChanges(role: string): boolean {
   return role !== "" && role !== "User";
 }
 
+// Monitoring Integration (PRD_Monitoring_Integration.md §5).
+export function canManageIntegrations(role: string): boolean {
+  return role === "ManagerLead" || role === "DevOps";
+}
+
 export function canLinkChange(role: string): boolean {
   return role !== "User" && role !== "QA" && role !== "";
 }

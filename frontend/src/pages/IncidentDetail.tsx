@@ -18,6 +18,7 @@ import { SeverityBadge } from "../components/SeverityBadge";
 import { ChangeStatusBadge } from "../components/ChangeStatusBadge";
 import { SlaBadge } from "../components/SlaBadge";
 import { SlaPanel } from "../components/SlaPanel";
+import { AlertPanel } from "../components/AlertPanel";
 import { StatusBadge } from "../components/StatusBadge";
 
 function formatTime(iso: string | null): string {
@@ -46,6 +47,16 @@ function activityLabel(type: string, from: string | null, to: string | null): st
       return "Incident dibuka kembali";
     case "change_link":
       return "Link change request diubah";
+    case "alert_created":
+      return "Dibuat otomatis dari alert monitoring";
+    case "alert_refired":
+      return "Alert monitoring berbunyi lagi";
+    case "alert_resolved":
+      return "Alert monitoring resolved";
+    case "alert_reoccurred":
+      return "Alert muncul lagi setelah incident selesai";
+    case "alert_grouped":
+      return "Alert dikelompokkan ke incident ini (storm)";
     case "sla_warning":
       return "SLA hampir terlewati (peringatan)";
     case "sla_breached":
@@ -465,6 +476,8 @@ export function IncidentDetail() {
         </dl>
       </div>
 
+      {incident.source === "monitoring" && <AlertPanel incidentId={incident.id} />}
+
       <SlaPanel incidentId={incident.id} hasSla={incident.sla != null} compact={user?.role === "User"} />
 
       {actionError !== null && (
@@ -867,7 +880,7 @@ export function IncidentDetail() {
             <li key={c.id} className="rounded-lg bg-chalk p-3 text-sm">
               <p className="whitespace-pre-wrap">{c.body}</p>
               <p className="mt-1 text-xs text-veil">
-                {(c.author_id && userById.get(c.author_id)?.name) || "?"} ·{" "}
+                {c.author_id === null ? "sistem" : userById.get(c.author_id)?.name ?? "?"} ·{" "}
                 {formatTime(c.created_at)}
               </p>
             </li>

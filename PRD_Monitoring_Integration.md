@@ -1,9 +1,9 @@
 # PRD — Monitoring / Observability Integration (Enhancement)
 
 **Produk:** Incident Management System
-**Versi dokumen:** 0.1 (DRAFT untuk review)
+**Versi dokumen:** 0.2 (keputusan Q1–Q6: default disetujui)
 **Tanggal:** 2026-10-03
-**Status:** Menunggu review & keputusan user (lihat §19)
+**Status:** Disetujui — MON-1, MON-2, MON-3 terimplementasi. Catatan: UI integrasi berupa halaman "Integrasi" sendiri (bukan tab Master Data) karena DevOps tidak punya akses Master Data; allowlist IP memakai alamat koneksi langsung (belum membaca X-Forwarded-For).
 **Referensi:** PRD MVP §1 (*incident dari sumber otomatis*), §11 (`master_incident_source`: System/Monitoring), §19 (*integration layer setelah core stabil*), §21
 **Bergantung pada:** MVP. Lebih bernilai bila SLA (PRD_SLA_Escalation.md) sudah ada, karena alert P1 langsung masuk hitungan SLA.
 
@@ -216,7 +216,7 @@ Route webhook berada **di luar** grup `RequireAuth` JWT, dengan middleware auten
 
 Tidak ada dependensi baru. Rate limit memakai implementasi token bucket sederhana in-memory. Bila multi-replica, rate limit per instance (Q5).
 
-## 19. Keputusan yang Dibutuhkan
+## 19. Keputusan (default disetujui user, 2026-10-04)
 
 | # | Pertanyaan | Usulan default |
 |---|---|---|

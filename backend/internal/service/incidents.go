@@ -97,7 +97,7 @@ func (s *IncidentService) Create(ctx context.Context, actor *model.AuthUser, in 
 	if err != nil {
 		return nil, err
 	}
-	created, err := s.repo.CreateIncident(ctx, in, no, actor.ID, slaRows)
+	created, err := s.repo.CreateIncident(ctx, in, no, &actor.ID, slaRows)
 	if err != nil {
 		return nil, fmt.Errorf("create incident: %w", err)
 	}
@@ -119,7 +119,12 @@ func (s *IncidentService) List(ctx context.Context, actor *model.AuthUser, f rep
 	if f.Limit > 100 {
 		return nil, 0, BadRequest("VALIDATION_ERROR", "Limit maksimal 100.", map[string]string{"field": "limit"})
 	}
-	if actor.Role == model.RoleUser {
+	// involved=me: incident yang saya laporkan ATAU tugaskan ke saya (My
+	// Incidents, PRD §9). User/Customer selalu dibatasi ke incident miliknya.
+	if f.InvolvedID != "" && f.InvolvedID != "me" {
+		return nil, 0, BadRequest("VALIDATION_ERROR", "Filter involved hanya mendukung nilai me.", map[string]string{"field": "involved"})
+	}
+	if f.InvolvedID == "me" || actor.Role == model.RoleUser {
 		f.InvolvedID = actor.ID
 	}
 	if f.AssigneeID == "me" {

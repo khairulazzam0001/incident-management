@@ -52,8 +52,13 @@ func (r *Repository) NextIncidentNo(ctx context.Context) (string, error) {
 	return fmt.Sprintf("INC-%d-%06d", time.Now().UTC().Year(), seq), nil
 }
 
-// CreateIncident inserts the incident and its "created" activity atomically.
-func (r *Repository) CreateIncident(ctx context.Context, in model.CreateIncidentInput, incidentNo, reporterID string, slaRows []SLAInstanceInput) (*model.Incident, error) {
+// IncidentStep is extra work run inside CreateIncident's transaction (e.g.
+// linking a monitoring alert) so the incident never exists without it.
+type IncidentStep func(ctx context.Context, tx pgx.Tx, created *model.Incident) error
+
+// CreateIncident inserts the incident, its "created" activity, SLA instances
+// and any extra steps atomically. reporterID nil = created by the system.
+func (r *Repository) CreateIncident(ctx context.Context, in model.CreateIncidentInput, incidentNo string, reporterID *string, slaRows []SLAInstanceInput, steps ...IncidentStep) (*model.Incident, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -79,6 +84,11 @@ func (r *Repository) CreateIncident(ctx context.Context, in model.CreateIncident
 	}
 	if err := insertSLAInstances(ctx, tx, created.ID, slaRows); err != nil {
 		return nil, err
+	}
+	for _, step := range steps {
+		if err := step(ctx, tx, created); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)

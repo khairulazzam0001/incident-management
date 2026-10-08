@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { PriorityBadge } from "../components/PriorityBadge";
 import { SeverityBadge } from "../components/SeverityBadge";
 import { SlaBadge } from "../components/SlaBadge";
@@ -10,11 +11,12 @@ import { StatusBadge } from "../components/StatusBadge";
 const PAGE_SIZE = 20;
 
 export function MyIncidents() {
+  const { user } = useAuth();
   const [page, setPage] = useState(1);
   const incidents = useQuery({
     queryKey: ["incidents", "mine", page],
     queryFn: ({ signal }) =>
-      api.listIncidents({ assignee: "me", page, limit: PAGE_SIZE, signal }),
+      api.listIncidents({ involved: "me", page, limit: PAGE_SIZE, signal }),
   });
 
   const total = incidents.data?.meta.total ?? 0;
@@ -24,7 +26,7 @@ export function MyIncidents() {
     <section className="w-full p-6">
       <h1 className="text-2xl font-semibold">My Incidents</h1>
       <p className="mt-1 text-sm text-veil">
-        Incident yang ditugaskan kepada saya sebagai PIC.
+        Incident yang saya laporkan atau yang ditugaskan kepada saya sebagai PIC.
       </p>
       <div className="mt-4">
         {incidents.isPending && (
@@ -47,7 +49,7 @@ export function MyIncidents() {
         )}
         {incidents.data && incidents.data.data.length === 0 && (
           <div className="rounded-lg border border-mist bg-paper p-8 text-center text-sm text-veil">
-            Tidak ada incident yang ditugaskan kepada Anda.
+            Belum ada incident yang Anda laporkan atau yang ditugaskan kepada Anda.
           </div>
         )}
         {incidents.data && incidents.data.data.length > 0 && (
@@ -64,6 +66,16 @@ export function MyIncidents() {
                       <SeverityBadge severity={in_.severity} />
                       <PriorityBadge priority={in_.priority} />
                       <SlaBadge sla={in_.sla ?? null} />
+                      {user !== null && in_.reporter_id === user.id && (
+                        <span className="rounded-full border border-mist bg-chalk px-2 py-0.5 text-xs font-semibold text-veil">
+                          Pelapor
+                        </span>
+                      )}
+                      {user !== null && in_.pic_id === user.id && (
+                        <span className="rounded-full border border-mist bg-lilac px-2 py-0.5 text-xs font-semibold text-iris">
+                          PIC
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 font-medium">{in_.title}</p>
                   </Link>

@@ -174,6 +174,95 @@ export interface SLADashboard {
   worker_last_tick_at: string | null;
 }
 
+// ===== Monitoring Integration (PRD_Monitoring_Integration.md) =====
+
+export type IntegrationType = "ALERTMANAGER" | "GRAFANA" | "GENERIC_JSON";
+
+export interface Integration {
+  id: string;
+  type: IntegrationType;
+  name: string;
+  token_last4: string;
+  is_active: boolean;
+  default_application_id: string | null;
+  default_environment: string | null;
+  min_severity: string;
+  mapping: Record<string, unknown>;
+  ip_allowlist: string[];
+  rate_limit_per_min: number;
+  created_by: string | null;
+  created_at: string;
+  rotated_at: string | null;
+  last_event_at: string | null;
+  events_24h: number;
+}
+
+export interface IntegrationInput {
+  type?: IntegrationType;
+  name: string;
+  is_active?: boolean;
+  default_application_id: string | null;
+  default_environment: string | null;
+  min_severity: string;
+  mapping?: Record<string, unknown>;
+  ip_allowlist: string[];
+  rate_limit_per_min: number;
+}
+
+export interface IntegrationCreated {
+  integration: Integration;
+  webhook_path: string;
+  token: string;
+}
+
+export interface AlertEvent {
+  id: string;
+  received_at: string;
+  fingerprint: string;
+  status: string;
+  result: "created" | "updated" | "grouped" | "ignored" | "duplicate" | "error";
+  warning: string;
+  error: string;
+  incident_id: string | null;
+  incident_no: string | null;
+  payload: unknown;
+}
+
+export interface AlertEventListResponse {
+  data: AlertEvent[];
+  meta: PageMeta;
+}
+
+export interface IncidentAlert {
+  id: string;
+  incident_id: string;
+  integration_id: string;
+  integration_name: string;
+  fingerprint: string;
+  title: string;
+  labels: Record<string, string>;
+  source_url: string;
+  first_seen: string;
+  last_seen: string;
+  fire_count: number;
+  last_status: "firing" | "resolved";
+}
+
+export interface DryRunAlert {
+  alert: { fingerprint: string; status: string; title: string; labels: Record<string, string> };
+  mapped: {
+    severity: string;
+    priority: string;
+    application_code: string;
+    environment: string;
+    title: string;
+  };
+  application_id: string | null;
+  environment: string | null;
+  action: "create" | "ignore" | "update_resolved";
+  warning: string;
+}
+
 export interface Comment {
   id: string;
   incident_id: string;

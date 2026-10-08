@@ -8,6 +8,7 @@ import { ChangeList } from "./pages/ChangeList";
 import { ChangeNew } from "./pages/ChangeNew";
 import { Dashboard } from "./pages/Dashboard";
 import { IncidentDetail } from "./pages/IncidentDetail";
+import { Integrations } from "./pages/Integrations";
 import { IncidentList } from "./pages/IncidentList";
 import { IncidentNew } from "./pages/IncidentNew";
 import { Login } from "./pages/Login";
@@ -38,6 +39,7 @@ function Shell() {
           <Route path="/my" element={<MyIncidents />} />
           <Route path="/master" element={<MasterData />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/integrations" element={<Integrations />} />
           <Route path="/incidents/new" element={<IncidentNew />} />
           <Route path="/incidents/:id" element={<IncidentDetail />} />
           <Route path="/changes" element={<ChangeList />} />

@@ -11,6 +11,8 @@ const TYPE_LABELS: Record<string, string> = {
   verification_failed: "Verification FAIL",
   resolved: "Incident resolved",
   closed: "Incident closed",
+  alert_storm: "Alert storm dari monitoring",
+  alert_reoccurred: "Alert muncul lagi setelah incident selesai",
   sla_warning: "SLA hampir terlewati",
   sla_breached: "SLA terlewati (breach)",
   sla_reminder: "Pengingat: SLA masih breach",

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { canViewChanges, useAuth } from "../auth/AuthContext";
+import { canManageIntegrations, canViewChanges, useAuth } from "../auth/AuthContext";
 import {
   BellIcon,
   ChangeIcon,
@@ -7,6 +7,7 @@ import {
   DashboardIcon,
   DatabaseIcon,
   LogoutIcon,
+  PlugIcon,
   TicketIcon,
   UserIcon,
 } from "./icons";
@@ -44,6 +45,9 @@ export function Sidebar({
     { to: "/dashboard", label: "Dashboard", icon: DashboardIcon },
     { to: "/my", label: "My Incidents", icon: UserIcon },
     { to: "/master", label: "Master Data", icon: DatabaseIcon },
+    ...(user !== null && canManageIntegrations(user.role)
+      ? [{ to: "/integrations", label: "Integrasi", icon: PlugIcon }]
+      : []),
     {
       to: "/notifications",
       label: "Notifikasi",
