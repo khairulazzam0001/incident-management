@@ -234,6 +234,11 @@ export function IncidentList() {
                       <SeverityBadge severity={in_.severity} />
                       <PriorityBadge priority={in_.priority} />
                       <SlaBadge sla={in_.sla ?? null} />
+                      {in_.source === "monitoring" && (
+                        <span className="rounded-full border border-mist bg-lilac px-2 py-0.5 text-xs font-semibold text-iris">
+                          monitoring
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 font-medium">{in_.title}</p>
                   </Link>

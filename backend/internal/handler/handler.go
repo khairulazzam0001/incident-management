@@ -35,6 +35,8 @@ func NewRouter(d Deps) http.Handler {
 
 	r.Get("/health", Health)
 	r.Post("/api/auth/login", HandleLogin(d))
+	// Webhook monitoring: diautentikasi token integrasi, bukan JWT (PRD Monitoring §10).
+	r.Post("/api/integrations/alerts/{id}", HandleAlertWebhook(d))
 
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(d.Auth.Parse))
@@ -78,6 +80,15 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/master/holidays", HandleHolidays(d))
 		r.Post("/api/master/holidays", HandleCreateHoliday(d))
 		r.Delete("/api/master/holidays/{id}", HandleDeleteHoliday(d))
+
+		// Monitoring Integration (PRD_Monitoring_Integration.md §10).
+		r.Get("/api/incidents/{id}/alerts", HandleIncidentAlerts(d))
+		r.Get("/api/master/integrations", HandleIntegrations(d))
+		r.Post("/api/master/integrations", HandleCreateIntegration(d))
+		r.Patch("/api/master/integrations/{id}", HandleUpdateIntegration(d))
+		r.Post("/api/master/integrations/{id}/rotate-token", HandleRotateIntegrationToken(d))
+		r.Post("/api/master/integrations/{id}/test", HandleTestIntegration(d))
+		r.Get("/api/master/integrations/{id}/events", HandleAlertEvents(d))
 
 		// Change Management CM-1 (PRD_Change_Management.md §15).
 		r.Get("/api/changes", HandleListChanges(d))

@@ -23,6 +23,12 @@ import type {
   Fix,
   FixListResponse,
   Holiday,
+  AlertEventListResponse,
+  DryRunAlert,
+  IncidentAlert,
+  Integration,
+  IntegrationCreated,
+  IntegrationInput,
   IncidentSLA,
   SLADashboard,
   SLAPolicy,
@@ -43,6 +49,7 @@ import type {
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+export const API_BASE_URL = BASE_URL;
 const TOKEN_KEY = "im_token";
 const USER_KEY = "im_user";
 
@@ -155,6 +162,7 @@ export interface IncidentFilters {
   application?: string;
   team?: string;
   assignee?: string;
+  involved?: string;
   created_from?: string;
   created_to?: string;
   sla?: string;
@@ -174,6 +182,7 @@ function toQuery(f: IncidentFilters): string {
   if (f.application) params.set("application", f.application);
   if (f.team) params.set("team", f.team);
   if (f.assignee) params.set("assignee", f.assignee);
+  if (f.involved) params.set("involved", f.involved);
   if (f.created_from) params.set("created_from", f.created_from);
   if (f.created_to) params.set("created_to", f.created_to);
   if (f.sla) params.set("sla", f.sla);
@@ -439,6 +448,33 @@ export const api = {
       `/api/changes/${id}/incidents/${incidentId}?relation=${relation}`,
       { method: "DELETE" },
     );
+  },
+  listIntegrations(signal?: AbortSignal): Promise<DataList<Integration>> {
+    return request<DataList<Integration>>("/api/master/integrations", { signal });
+  },
+  createIntegration(input: IntegrationInput): Promise<IntegrationCreated> {
+    return request<IntegrationCreated>("/api/master/integrations", { method: "POST", body: input });
+  },
+  updateIntegration(id: string, input: IntegrationInput): Promise<Integration> {
+    return request<Integration>(`/api/master/integrations/${id}`, { method: "PATCH", body: input });
+  },
+  rotateIntegrationToken(id: string): Promise<{ token: string }> {
+    return request<{ token: string }>(`/api/master/integrations/${id}/rotate-token`, { method: "POST" });
+  },
+  testIntegration(id: string, payload: unknown): Promise<DataList<DryRunAlert>> {
+    return request<DataList<DryRunAlert>>(`/api/master/integrations/${id}/test`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+  getAlertEvents(id: string, page: number, signal?: AbortSignal): Promise<AlertEventListResponse> {
+    return request<AlertEventListResponse>(
+      `/api/master/integrations/${id}/events?page=${page}&limit=20`,
+      { signal },
+    );
+  },
+  getIncidentAlerts(id: string, signal?: AbortSignal): Promise<DataList<IncidentAlert>> {
+    return request<DataList<IncidentAlert>>(`/api/incidents/${id}/alerts`, { signal });
   },
   getIncidentSLA(id: string, signal?: AbortSignal): Promise<DataList<IncidentSLA>> {
     return request<DataList<IncidentSLA>>(`/api/incidents/${id}/sla`, { signal });

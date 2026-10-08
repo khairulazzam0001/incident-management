@@ -72,6 +72,8 @@ func run() error {
 	} else {
 		log.Info("sla worker dinonaktifkan")
 	}
+	// Retensi event alert monitoring 90 hari (PRD Monitoring Q6).
+	go incSvc.RunMaintenance(workerCtx)
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,

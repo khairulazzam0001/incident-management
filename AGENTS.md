@@ -123,6 +123,7 @@ Jalankan perintah dari folder yang benar. Jangan `cd` di dalam command — pakai
 ```
 GET    /health
 GET    /api/incidents?status=&severity=&priority=&q=&page=&limit=
+GET    /api/incidents?involved=me         # My Incidents: dilaporkan ATAU PIC saya (PRD §9); nilai lain → 400
 POST   /api/incidents
 GET    /api/incidents/:id
 PATCH  /api/incidents/:id/status          # controlled status transition
@@ -188,6 +189,11 @@ GET    /api/master/sla-policies           # {policies, calendars} (internal)
 PUT    /api/master/sla-policies/:priority # ManagerLead; snapshot: hanya incident baru
 PUT    /api/master/business-hours/:calendar  # ManagerLead; {hours:[{weekday,start_minute,end_minute}]}
 GET    /api/master/holidays?year= | POST {date,name} | DELETE /:id   # tulis: ManagerLead
+# Monitoring Integration (PRD_Monitoring_Integration.md §10):
+POST   /api/integrations/alerts/:integrationId   # webhook; Bearer token integrasi (BUKAN JWT); body ≤ 1 MiB; 202 {received,created,updated,grouped,ignored,duplicate,errors}
+GET    /api/incidents/:id/alerts                  # alert ter-link (read scope)
+GET    /api/master/integrations | POST (→ token sekali) | PATCH /:id    # ManagerLead/DevOps
+POST   /api/master/integrations/:id/rotate-token | /:id/test (dry-run) ; GET /:id/events?result=&page=&limit=
 # Worker SLA jalan di proses API (SLA_TICK_SECONDS default 60, SLA_WORKER_DISABLED=true untuk mematikan).
 # Notifikasi: item memuat incident_id ATAU change_id (nullable, CM-2).
 # Gate: PATCH status FIXING → VERIFYING incident production tanpa change FIX_FOR terimplementasi → 409 CHANGE_REQUIRED.
@@ -209,6 +215,7 @@ Jangan ubah contract tanpa update frontend `api/` dan sebutkan di ringkasan akhi
 - Transaksi: `trans_incident` (termasuk `incident_no` unik), `trans_incident_assignment` (riwayat team/PIC), `trans_incident_comment`, `trans_incident_activity` (audit trail), `trans_incident_investigation`, `trans_incident_fix`, `trans_incident_verification`, `trans_incident_attachment`.
 - Change Management (`PRD_Change_Management.md` §12): master `master_change_type`, `master_change_risk`, `master_change_status`; transaksi `trans_change` (`change_no` unik `CHG-YYYY-NNNNNN`), `trans_change_approval`, `trans_change_activity`, `trans_change_comment`, `trans_change_incident` (FIX_FOR / CAUSED_BY), `trans_change_attachment`.
 - SLA (`PRD_SLA_Escalation.md` §9): master `master_sla_policy`, `master_business_calendar`, `master_business_hours`, `master_holiday`; transaksi `trans_incident_sla` (snapshot policy per siklus), `trans_incident_escalation` (UNIQUE sla_id+level).
+- Monitoring (`PRD_Monitoring_Integration.md` §9): `master_integration` (token_hash SHA-256, tidak pernah dikirim ke client), `trans_alert_event` (retensi 90 hari), `trans_incident_alert` (dedup per integration+fingerprint).
 - Index: `trans_incident(status_id)`, `trans_incident(severity_id)`, `trans_incident(priority_id)`, `trans_incident(incident_no)` unik, `trans_incident_activity(incident_id)`; hindari query N+1 di timeline.
 - Semua status/assignment change wajib simpan actor + timestamp.
 
